@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>연습용 기록물 등록 화면 (가상)</title>
+<style>
+body{margin:0;font-family:"Malgun Gothic",sans-serif;font-size:13px;background:#e9edf3}
+.top{background:#2d4a7a;color:#fff;padding:10px 16px;font-weight:bold}
+.wrap{display:flex;height:calc(100vh - 38px)}
+.menu{width:180px;background:#f4f6fa;border-right:1px solid #c5cdd9;padding:10px;line-height:2;color:#2d4a7a}
+iframe{flex:1;border:0;background:#fff}
+.note{background:#fff7d6;border-bottom:1px solid #e6d590;padding:8px 16px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="top">○○기록관리시스템 (연습용 가상 화면)</div>
+<div class="note">IUX OCR <b>입력 도우미</b> 연습용 화면입니다. 실제 시스템처럼 입력 양식이 프레임 안에 들어 있습니다. 북마크바의 도우미를 눌러 연습해 보세요.</div>
+<div class="wrap">
+  <div class="menu">▸ 기록물 등록<br>▸ 기록물 조회<br>▸ 이관 관리<br>▸ 통계</div>
+  <iframe src="/helper-demo/form" title="등록 양식"></iframe>
+</div>
+</body>
+</html>

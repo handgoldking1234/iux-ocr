@@ -1,0 +1,10 @@
+# 작업 데이터 (문서·결과·도우미 키)
+workspace/
+# 파이썬 환경·캐시
+.venv/
+__pycache__/
+*.pyc
+# 오프라인 설치 묶음·포터블 엔진 (용량 큼)
+wheels/
+bin/
+tessdata/

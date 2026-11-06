@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IUX OCR · 로컬 문서 인식</title>
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --panel-2:#f8f9fb; --line:#e4e7ec; --line-2:#d0d5dd;
+  --text:#101828; --text-2:#475467; --text-3:#98a2b3;
+  --accent:#2f5bff; --accent-2:#e8eeff; --accent-ink:#1d3fcc;
+  --ok:#12a150; --ok-bg:#e7f6ee; --warn:#e8770c; --warn-bg:#fff1e3; --bad:#d92d20; --bad-bg:#fdecea;
+  --viewer:#e9ebef; --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+  --radius:10px; --font:"Pretendard","Pretendard Variable","Malgun Gothic","맑은 고딕","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  --mono:"D2Coding","Consolas","SFMono-Regular",ui-monospace,monospace;
+}
+[data-theme=dark]{
+  --bg:#0e1116; --panel:#151a21; --panel-2:#1b212a; --line:#262e3a; --line-2:#344050;
+  --text:#e8ecf2; --text-2:#a4afbf; --text-3:#6b7788;
+  --accent:#6b8bff; --accent-2:#1d2745; --accent-ink:#a9bcff;
+  --ok:#3ccf7e; --ok-bg:#12291d; --warn:#ff9d47; --warn-bg:#33230f; --bad:#ff6b5e; --bad-bg:#3a1714;
+  --viewer:#0a0d11; --shadow:0 1px 2px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{font-family:var(--font);font-size:13px;color:var(--text);background:var(--bg);letter-spacing:-.01em;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.app{display:grid;grid-template-rows:52px 1fr;height:100vh}
+/* header */
+header{display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;min-width:244px}
+.logo{width:28px;height:28px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff}
+.logo svg{width:17px;height:17px}
+.brand b{font-size:15px;font-weight:800;letter-spacing:-.02em}
+.brand span{color:var(--text-3);font-size:12px}
+.pills{display:flex;gap:6px;flex:1}
+.pill{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:99px;border:1px solid var(--line);background:var(--panel-2);font-size:12px;color:var(--text-2)}
+.pill:hover{border-color:var(--line-2)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
+.dot.on{background:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+.dot.warn{background:var(--warn);box-shadow:0 0 0 3px var(--warn-bg)}
+.hbtns{display:flex;gap:6px}
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-weight:600;font-size:12.5px;white-space:nowrap;transition:.12s}
+.btn:hover{border-color:var(--line-2);background:var(--panel-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--panel-2)}
+.btn.icon{width:32px;padding:0}
+.btn.sm{height:28px;padding:0 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.btn.danger:hover{color:var(--bad);border-color:var(--bad)}
+/* layout */
+main{display:grid;grid-template-columns:260px 1fr 440px;min-height:0}
+aside.left{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.drop{margin:12px;border:1.5px dashed var(--line-2);border-radius:var(--radius);padding:16px 12px;text-align:center;color:var(--text-2);cursor:pointer;transition:.15s;background:var(--panel-2)}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-2);color:var(--accent-ink)}
+.drop svg{width:22px;height:22px;margin-bottom:6px}
+.drop b{display:block;font-size:13px;color:var(--text)}
+.drop small{color:var(--text-3);font-size:11.5px}
+.sec-h{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
+.docs{overflow:auto;padding:0 8px 8px;max-height:34%}
+.doc{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;cursor:pointer;position:relative}
+.doc:hover{background:var(--panel-2)}
+.doc.on{background:var(--accent-2)}
+.doc .ico{width:30px;height:30px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line);display:grid;place-items:center;color:var(--text-2)}
+.doc.on .ico{color:var(--accent);border-color:transparent;background:var(--panel)}
+.doc .meta{flex:1;min-width:0}
+.doc .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc .sub{font-size:11.5px;color:var(--text-3);display:flex;align-items:center;gap:6px;margin-top:2px}
+.bar{height:3px;border-radius:3px;background:var(--line);flex:1;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);border-radius:3px}
+.doc .del{opacity:0;color:var(--text-3)}
+.doc:hover .del{opacity:1}
+.thumbs{flex:1;overflow:auto;padding:4px 12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start;border-top:1px solid var(--line)}
+.th{position:relative;border-radius:6px;overflow:hidden;border:2px solid transparent;cursor:pointer;background:var(--panel-2)}
+.th img{display:block;width:100%;aspect-ratio:1/1.35;object-fit:cover;object-position:top}
+.th.on{border-color:var(--accent)}
+.th .no{position:absolute;left:4px;bottom:4px;font-size:10.5px;font-weight:700;background:rgba(16,24,40,.75);color:#fff;border-radius:4px;padding:1px 5px}
+.th .st{position:absolute;right:4px;top:4px;font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 5px;background:var(--ok);color:#fff}
+.th .st.low{background:var(--warn)}
+.th .st.run{background:var(--accent)}
+.empty-side{padding:24px 16px;color:var(--text-3);font-size:12px;text-align:center;line-height:1.6}
+/* viewer */
+section.center{display:flex;flex-direction:column;min-width:0;min-height:0}
+.vbar{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.vbar .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.pg{font-weight:700;min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+.zoomv{min-width:48px;text-align:center;color:var(--text-2);font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.seg button{height:26px;padding:0 10px;border-radius:6px;font-size:12px;font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;gap:5px}
+.seg button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow)}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.vbar .name{flex:1;min-width:0;text-align:right;color:var(--text-3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewer{flex:1;overflow:auto;background:var(--viewer);position:relative}
+.stage{position:relative;margin:24px auto;box-shadow:0 4px 24px rgba(0,0,0,.18);background:#fff}
+.stage img{display:block;width:100%;height:100%;user-select:none;-webkit-user-drag:none}
+.stage svg{position:absolute;inset:0;width:100%;height:100%}
+.bx{fill:rgba(47,91,255,.06);stroke:rgba(47,91,255,.55);stroke-width:1;vector-effect:non-scaling-stroke;cursor:pointer}
+.bx.low{fill:rgba(232,119,12,.18);stroke:rgba(232,119,12,.9)}
+.bx.sel{fill:rgba(47,91,255,.22);stroke:var(--accent);stroke-width:2.5}
+.bx:hover{fill:rgba(47,91,255,.16)}
+.welcome{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--text-2)}
+.welcome .card{max-width:520px;padding:32px}
+.welcome h2{font-size:22px;font-weight:800;color:var(--text);margin:14px 0 8px;letter-spacing:-.03em}
+.welcome p{line-height:1.7}
+.welcome .big{width:56px;height:56px;border-radius:16px;background:var(--accent);color:#fff;display:inline-grid;place-items:center}
+.welcome .big svg{width:28px;height:28px}
+.steps{display:flex;gap:10px;justify-content:center;margin-top:22px}
+.steps div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;width:150px;text-align:left}
+.steps b{display:block;font-size:12.5px;color:var(--text);margin:6px 0 2px}
+.steps small{color:var(--text-3);font-size:11.5px;line-height:1.5}
+.steps svg{color:var(--accent)}
+.vnote{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12px;color:var(--text-2);box-shadow:var(--shadow);z-index:2}
+/* right panel */
+aside.right{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.ocrbox{padding:14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.row{display:flex;align-items:center;gap:8px}
+.lbl{font-size:11.5px;font-weight:700;color:var(--text-3);width:52px;flex:none}
+.eng{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;flex:1}
+.eng button{border:1px solid var(--line);border-radius:9px;padding:7px 8px;text-align:left;background:var(--panel);position:relative}
+.eng button b{display:flex;align-items:center;gap:5px;font-size:12.5px}
+.eng button small{display:block;color:var(--text-3);font-size:11px;margin-top:1px}
+.eng button.on{border-color:var(--accent);background:var(--accent-2)}
+.eng button.on b{color:var(--accent-ink)}
+.eng button:disabled{opacity:.45;cursor:not-allowed}
+.eng .tag{position:absolute;right:6px;top:6px;font-size:9.5px;font-weight:800;padding:1px 5px;border-radius:4px;background:var(--panel-2);color:var(--text-3)}
+select,input[type=text],input[type=search],textarea.inp{height:30px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:0 8px;outline:none;min-width:0}
+select:focus,input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-2)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;flex:1}
+.chip{height:26px;padding:0 9px;border-radius:99px;border:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;gap:4px}
+.chip.on{background:var(--text);border-color:var(--text);color:var(--panel)}
+.runrow{display:flex;gap:6px}
+.runrow .btn{flex:1;height:36px}
+.prog{height:4px;background:var(--line);border-radius:4px;overflow:hidden;display:none}
+.prog.show{display:block}
+.prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.tabs{display:flex;padding:0 10px;border-bottom:1px solid var(--line);gap:2px}
+.tabs button{height:40px;padding:0 12px;font-weight:700;color:var(--text-3);border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+.tabs button.on{color:var(--text);border-color:var(--accent)}
+.tab{flex:1;overflow:auto;min-height:0;display:none}
+.tab.on{display:flex;flex-direction:column}
+.stats{display:flex;gap:6px;padding:10px 14px;flex-wrap:wrap;align-items:center}
+.stat{font-size:11.5px;color:var(--text-2);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:3px 7px}
+.stat b{color:var(--text)}
+.stat.warn{background:var(--warn-bg);border-color:transparent;color:var(--warn)}
+.stat.warn b{color:var(--warn)}
+.stats .sp{flex:1}
+.lines{padding:0 8px 16px;font-size:13.5px}
+.ln{display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border-radius:7px;border:1px solid transparent}
+.ln:hover{background:var(--panel-2)}
+.ln.sel{background:var(--accent-2);border-color:transparent}
+.ln.low .tx{text-decoration:underline wavy var(--warn) 1px;text-underline-offset:4px}
+.ln .n{width:22px;flex:none;text-align:right;color:var(--text-3);font-size:11px;padding-top:2px;font-variant-numeric:tabular-nums}
+.ln .tx{flex:1;outline:none;line-height:1.55;word-break:break-all;min-height:20px;white-space:pre-wrap}
+.ln .cf{flex:none;font-size:10.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--ok-bg);color:var(--ok);margin-top:2px}
+.ln .cf.low{background:var(--warn-bg);color:var(--warn)}
+.ln .cf.none{background:var(--panel-2);color:var(--text-3)}
+.gap{height:10px}
+textarea.full{flex:1;margin:0 14px 14px;border:1px solid var(--line);border-radius:10px;padding:12px;resize:none;outline:none;line-height:1.7;font-size:13.5px;background:var(--panel);min-height:240px}
+.banner{margin:0 14px 8px;padding:8px 10px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-size:12px;display:flex;gap:8px;align-items:center}
+.banner .btn{margin-left:auto}
+.placeholder{padding:40px 24px;text-align:center;color:var(--text-3);line-height:1.7}
+/* refine */
+.rf{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+.rf h4{font-size:11.5px;font-weight:800;color:var(--text-3);letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+.rf h4 .sp{flex:1}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tool{border:1px solid var(--line);border-radius:9px;padding:9px 10px;text-align:left;display:flex;gap:9px;align-items:flex-start;background:var(--panel)}
+.tool:hover{border-color:var(--accent);background:var(--accent-2)}
+.tool:disabled{opacity:.45;cursor:not-allowed;background:var(--panel);border-color:var(--line)}
+.tool .ti{width:26px;height:26px;border-radius:7px;background:var(--panel-2);display:grid;place-items:center;color:var(--accent);flex:none}
+.tool.ai .ti{color:#9b51e0}
+.tool b{display:block;font-size:12.5px}
+.tool small{display:block;color:var(--text-3);font-size:11px;line-height:1.4;margin-top:1px}
+.fr{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:center}
+.ck{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2);cursor:pointer}
+.ck input{accent-color:var(--accent)}
+.result{border:1px solid var(--accent);border-radius:10px;overflow:hidden;background:var(--panel)}
+.result .rh{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--accent-2);font-weight:700;font-size:12.5px;color:var(--accent-ink)}
+.result .rh .sp{flex:1}
+.result .rh .ttl{white-space:nowrap}
+.result .rh .cnt{font-weight:600;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.result textarea{width:100%;border:0;outline:none;padding:10px;min-height:220px;resize:vertical;line-height:1.65;background:var(--panel);font-size:13px}
+.result .before{padding:10px;white-space:pre-wrap;color:var(--text-3);font-size:12.5px;line-height:1.6;border-bottom:1px dashed var(--line);max-height:180px;overflow:auto}
+.result .rf2{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
+table.fields{width:100%;border-collapse:collapse;font-size:12.5px}
+table.fields td{border-bottom:1px solid var(--line);padding:7px 10px;vertical-align:top}
+table.fields td:first-child{width:96px;color:var(--text-2);font-weight:700;white-space:nowrap}
+table.fields td[contenteditable]{outline:none}
+.tplbox{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel-2);display:flex;flex-direction:column;gap:8px}
+.tplbox .row select{flex:1;background:var(--panel)}
+.ftbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.ftbl th{text-align:left;font-size:11px;color:var(--text-3);font-weight:700;padding:4px 4px 6px;border-bottom:1px solid var(--line)}
+.ftbl td{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+.ftbl input[type=text],.ftbl select{width:100%;height:30px}
+.ftbl .pv{font-size:11.5px;color:var(--text-2);max-width:200px;max-height:54px;overflow:hidden;line-height:1.45;padding-top:6px;word-break:break-all}
+.ftbl .pv.empty{color:var(--text-3)}
+.ftbl .pv.err{color:var(--bad)}
+.mbox.wide{width:1040px}
+.tpl-top{display:flex;gap:8px;align-items:center}
+.tpl-top select{flex:1}
+.tpl-top input{flex:1}
+.drag{cursor:grab;color:var(--text-3);padding-top:6px}
+.fbar{padding:12px 14px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
+.fbar .row select{background:var(--panel)}
+.fbar .row{flex-wrap:wrap}
+.fstat{font-size:11.5px;color:var(--text-3);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.flist{flex:1;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.fc{border:1px solid var(--line);border-radius:10px;background:var(--panel);transition:border-color .15s,box-shadow .15s}
+.fc:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-2)}
+.fc.copied{border-color:var(--ok)}
+.fc.flash{box-shadow:0 0 0 3px var(--ok-bg)}
+.fh{display:flex;align-items:center;gap:6px;padding:6px 6px 0 10px}
+.fn{font-size:11.5px;font-weight:800;color:var(--text-2)}
+.fb{font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;background:var(--panel-2);color:var(--text-3)}
+.fb.ai{background:#f3e8ff;color:#9b51e0}.fb.miss{background:var(--warn-bg);color:var(--warn)}.fb.ok{background:var(--ok-bg);color:var(--ok)}
+.fh .sp{flex:1}
+.fv{width:100%;border:0;outline:none;resize:none;background:transparent;padding:4px 10px 9px;font-size:13.5px;line-height:1.55;min-height:28px;max-height:200px;overflow:auto}
+.fc.empty .fv::placeholder{color:var(--warn)}
+.ffoot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line);background:var(--panel)}
+.doc .chk{font-size:10px;font-weight:800;color:var(--ok);background:var(--ok-bg);border-radius:4px;padding:0 5px}
+.doc .fil{font-size:10px;font-weight:700;color:var(--accent-ink);background:var(--accent-2);border-radius:4px;padding:0 5px}
+.bm{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;background:#1f2a44;color:#fff;font-weight:800;text-decoration:none;cursor:grab}
+.muted{color:var(--text-3);font-size:11.5px;line-height:1.55}
+/* export */
+.fmts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fmt{border:1px solid var(--line);border-radius:10px;padding:12px 10px;text-align:left;background:var(--panel);transition:.12s}
+.fmt:hover{border-color:var(--accent);background:var(--accent-2)}
+.fmt .ext{font-size:11px;font-weight:800;color:#fff;border-radius:5px;padding:2px 6px;display:inline-block}
+.fmt b{display:block;margin:8px 0 2px;font-size:12.5px}
+.fmt small{color:var(--text-3);font-size:11px;line-height:1.45}
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(10,14,20,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal.on{display:flex}
+.mbox{background:var(--panel);border-radius:14px;width:640px;max-width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.mh{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.mh h3{font-size:16px;font-weight:800;flex:1}
+.mb{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.mf{display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--line)}
+.field label{display:block;font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:5px}
+.field .row input{flex:1}
+.log{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;height:150px;overflow:auto;padding:8px 10px;font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--text-2);white-space:pre-wrap}
+.bigprog{height:8px;background:var(--line);border-radius:8px;overflow:hidden}
+.bigprog i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+.guide h5{font-size:13.5px;margin:4px 0 6px;display:flex;align-items:center;gap:8px}
+.guide ol{padding-left:18px;line-height:1.8;color:var(--text-2)}
+.guide code{font-family:var(--mono);background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12px;color:var(--text)}
+.guide .box{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.badge{font-size:11px;font-weight:700;border-radius:5px;padding:2px 7px}
+.badge.on{background:var(--ok-bg);color:var(--ok)}
+.badge.off{background:var(--panel-2);color:var(--text-3)}
+/* toast */
+#toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:99}
+.toast{background:#101828;color:#fff;border-radius:10px;padding:10px 14px;font-size:12.5px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:380px;display:flex;gap:8px;align-items:flex-start;animation:tin .2s}
+.toast.err{background:var(--bad)}
+@keyframes tin{from{transform:translateY(8px);opacity:0}}
+.spin{animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.dropall{position:fixed;inset:0;background:rgba(47,91,255,.12);border:3px dashed var(--accent);z-index:80;display:none;place-items:center;font-size:20px;font-weight:800;color:var(--accent-ink);pointer-events:none}
+.dropall.on{display:grid}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:10px;border:3px solid transparent;background-clip:padding-box}
+@media (max-width:1280px){main{grid-template-columns:220px 1fr 380px}.brand{min-width:200px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="logo"><svg class="i" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/></svg></div>
+      <div><b>IUX OCR</b> <span>로컬 문서 인식</span></div>
+    </div>
+    <div class="pills" id="pills"></div>
+    <div class="hbtns">
+      <button class="btn" id="btnBatch" data-ic="files">폴더 일괄 처리</button>
+      <button class="btn icon ghost" id="btnTheme" title="다크 모드" data-ic="moon"></button>
+      <button class="btn icon ghost" id="btnHelp" title="엔진 설치 안내" data-ic="info"></button>
+    </div>
+  </header>
+  <main>
+    <aside class="left">
+      <div class="drop" id="drop">
+        <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+        <b>파일 추가</b><small>이미지 · PDF · TIFF를 끌어다 놓기</small>
+        <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf" hidden>
+      </div>
+      <div class="sec-h"><span>문서</span><span id="docCount"></span></div>
+      <div class="docs" id="docs"></div>
+      <div class="sec-h" style="border-top:1px solid var(--line);padding-top:10px"><span>페이지</span><span id="pageCount"></span></div>
+      <div class="thumbs" id="thumbs"></div>
+    </aside>
+
+    <section class="center">
+      <div class="vbar">
+        <button class="btn icon sm ghost" id="pPrev" data-ic="left" title="이전 페이지 (←)"></button>
+        <span class="pg" id="pgLabel">-</span>
+        <button class="btn icon sm ghost" id="pNext" data-ic="right" title="다음 페이지 (→)"></button>
+        <span class="sep"></span>
+        <button class="btn icon sm ghost" id="zOut" data-ic="zoomout" title="축소"></button>
+        <span class="zoomv" id="zLabel">맞춤</span>
+        <button class="btn icon sm ghost" id="zIn" data-ic="zoomin" title="확대"></button>
+        <button class="btn icon sm ghost" id="zFit" data-ic="fit" title="화면 맞춤"></button>
+        <span class="sep"></span>
+        <div class="seg" id="viewSeg">
+          <button data-v="image" class="on">원본</button>
+          <button data-v="proc">전처리</button>
+        </div>
+        <div class="seg"><button id="boxToggle" class="on"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>인식 영역</button></div>
+        <span class="name" id="vName"></span>
+      </div>
+      <div class="viewer" id="viewer">
+        <div class="welcome" id="welcome">
+          <div class="card">
+            <div class="big"><svg class="i" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/></svg></div>
+            <h2>스캔 문서를 텍스트로, 내 PC 안에서</h2>
+            <p>문서는 인터넷으로 나가지 않습니다.<br>왼쪽에 스캔 이미지나 PDF를 끌어다 놓으세요.</p>
+            <div class="steps">
+              <div><svg class="i" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg><b>1. 인식</b><small>빠름·정확·AI 엔진 중 선택</small></div>
+              <div><svg class="i" viewBox="0 0 24 24"><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/></svg><b>2. 검수</b><small>주황색 줄만 확인·수정</small></div>
+              <div><svg class="i" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg><b>3. 재가공·저장</b><small>정리·항목추출·마스킹 후 내보내기</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="stage" id="stage" hidden>
+          <img id="pimg" alt="">
+          <svg id="overlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+    </section>
+
+    <aside class="right">
+      <div class="ocrbox">
+        <div class="row"><span class="lbl">엔진</span>
+          <div class="eng" id="engSel">
+            <button data-e="tesseract"><span class="tag">일반 PC</span><b>빠름</b><small>Tesseract</small></button>
+            <button data-e="paddle"><span class="tag">CPU</span><b>정확</b><small>PaddleOCR</small></button>
+            <button data-e="ollama"><span class="tag">GPU</span><b>AI</b><small>Ollama 비전</small></button>
+          </div>
+        </div>
+        <div class="row" id="rowVlm" hidden><span class="lbl">AI 모델</span><select id="vlmSel" style="flex:1"></select></div>
+        <div class="row" id="rowLang"><span class="lbl">언어</span>
+          <select id="langSel" style="flex:1">
+            <option value="kor+eng">한국어 + 영어</option>
+            <option value="kor">한국어</option>
+            <option value="kor+eng+chi_tra">한국어 + 영어 + 한자(번체)</option>
+            <option value="eng">영어</option>
+            <option value="jpn">일본어</option>
+          </select>
+          <select id="psmSel" title="페이지 분석 방식" style="width:132px">
+            <option value="4">문서(단일 단)</option>
+            <option value="3">자동 레이아웃</option>
+            <option value="6">한 덩어리 글</option>
+            <option value="11">흩어진 글자</option>
+          </select>
+        </div>
+        <div class="row"><span class="lbl">전처리</span>
+          <div class="chips" id="preChips">
+            <button class="chip" data-k="deskew">기울기 보정</button>
+            <button class="chip" data-k="contrast">대비 향상</button>
+            <button class="chip" data-k="upscale">저해상도 확대</button>
+            <button class="chip" data-k="denoise">노이즈 제거</button>
+            <button class="chip" data-k="binarize">흑백화</button>
+            <button class="chip" data-k="orient">방향 감지</button>
+            <button class="chip" data-k="fixSpacing" title="Tesseract 한글 음절 띄어쓰기 오류 보정">띄어쓰기 보정</button>
+          </div>
+        </div>
+        <div class="runrow">
+          <button class="btn primary" id="runPage" data-ic="play">이 페이지 인식</button>
+          <button class="btn" id="runAll" data-ic="scan">전체 페이지 인식</button>
+          <button class="btn icon" id="runStop" title="중지" data-ic="stop" hidden></button>
+        </div>
+        <div class="prog" id="prog"><i></i></div>
+      </div>
+
+      <div class="tabs" id="tabs">
+        <button data-t="text" class="on" data-ic="text">텍스트</button>
+        <button data-t="fields" data-ic="clipboard">항목</button>
+        <button data-t="refine" data-ic="wand">재가공</button>
+        <button data-t="export" data-ic="download">내보내기</button>
+      </div>
+
+      <div class="tab on" id="tab-text">
+        <div class="stats" id="stats"></div>
+        <div id="textBody" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+      </div>
+
+      <div class="tab" id="tab-fields">
+        <div class="fbar">
+          <div class="row"><select id="fTpl" style="flex:1"></select><button class="btn sm" id="fRefill" data-ic="refresh" title="문서 텍스트에서 다시 채우기">다시 채우기</button><button class="btn icon sm ghost" id="fEdit" data-ic="wand" title="항목 편집"></button></div>
+          <div class="row"><button class="btn sm primary" id="fCopyAll" data-ic="copy" title="항목: 값 형태로 전체 복사">전체 복사</button><button class="btn sm" id="fCopyRow" data-ic="table" title="엑셀 한 줄로 붙여넣기 (탭 구분)">엑셀 한 줄</button><button class="btn sm" id="fNext" data-ic="right" title="아직 복사 안 한 다음 항목 복사 (Alt+C)">다음 항목</button><span style="flex:1"></span><button class="btn sm" id="fHelper" data-ic="cpu" title="업무 시스템에 바로 입력">시스템 입력</button></div>
+          <div class="fstat" id="fStat"></div>
+        </div>
+        <div class="flist" id="fList"></div>
+        <div class="ffoot"><label class="ck"><input type="checkbox" id="fChecked">확인 완료</label><span style="flex:1"></span><button class="btn sm primary" id="fDoneNext" data-ic="check">확인 완료 → 다음 문서</button></div>
+      </div>
+
+      <div class="tab" id="tab-refine">
+        <div class="rf">
+          <div class="row"><span class="lbl">범위</span>
+            <div class="seg" id="scopeSeg"><button data-s="page" class="on">현재 페이지</button><button data-s="all">전체 페이지</button></div>
+          </div>
+          <div class="tplbox">
+            <h4 style="margin:0">내 항목 추출<span class="sp"></span><button class="btn sm ghost" id="tplEdit" data-ic="wand">항목 편집</button></h4>
+            <div class="row"><select id="tplSel"></select><button class="btn sm primary" id="tplRun" data-ic="play">추출</button></div>
+            <div class="muted" id="tplDesc"></div>
+          </div>
+          <h4>일반 · 오프라인 즉시</h4>
+          <div class="grid2">
+            <button class="tool" data-r="body"><span class="ti" data-ic="text"></span><span><b>본문 추출</b><small>머리·붙임·결재란 빼고 본문만</small></span></button>
+            <button class="tool" data-r="clean"><span class="ti" data-ic="eraser"></span><span><b>줄바꿈·공백 정리</b><small>끊긴 문장을 문단으로 복원</small></span></button>
+            <button class="tool" data-r="fields"><span class="ti" data-ic="clipboard"></span><span><b>공문서 항목 추출</b><small>문서번호·시행일·수신·제목 등</small></span></button>
+            <button class="tool" data-r="mask"><span class="ti" data-ic="shield"></span><span><b>개인정보 마스킹</b><small>주민번호·전화·이메일·계좌</small></span></button>
+            <button class="tool" data-r="outline"><span class="ti" data-ic="tree"></span><span><b>항목체계 → 개요</b><small>1. 가. 1) 가) → 마크다운</small></span></button>
+          </div>
+          <div>
+            <h4 style="margin-bottom:6px">찾아 바꾸기</h4>
+            <div class="fr"><input type="text" id="frFind" placeholder="찾을 말"><input type="text" id="frRep" placeholder="바꿀 말"><button class="btn sm" id="frGo" data-ic="replace">미리보기</button></div>
+            <div class="row" style="margin-top:6px"><label class="ck"><input type="checkbox" id="frRegex">정규식</label><span class="muted">예: 요정→요청 처럼 자주 틀리는 글자를 한 번에</span></div>
+          </div>
+          <h4>AI · 로컬 LLM <span class="sp"></span><select id="llmSel" style="height:26px;font-size:12px;max-width:180px"></select></h4>
+          <div class="grid2" id="aiTools">
+            <button class="tool ai" data-a="fix"><span class="ti" data-ic="spell"></span><span><b>오탈자 교정</b><small>인식 오류만 바로잡기</small></span></button>
+            <button class="tool ai" data-a="summary"><span class="ti" data-ic="align"></span><span><b>요약</b><small>개조식 핵심 정리</small></span></button>
+            <button class="tool ai" data-a="structure"><span class="ti" data-ic="braces"></span><span><b>공문서 구조화</b><small>JSON 데이터로 변환</small></span></button>
+            <button class="tool ai" data-a="table"><span class="ti" data-ic="table"></span><span><b>표 정리</b><small>표 → 마크다운 표</small></span></button>
+            <button class="tool ai" data-a="plain"><span class="ti" data-ic="book"></span><span><b>쉬운 말로</b><small>행정 용어 풀어쓰기</small></span></button>
+            <button class="tool ai" data-a="translate"><span class="ti" data-ic="lang"></span><span><b>영어 번역</b><small>구조 유지 번역</small></span></button>
+          </div>
+          <div class="fr" style="grid-template-columns:1fr auto"><input type="text" id="aiCustom" placeholder="직접 지시 (예: 붙임 목록만 뽑아줘)"><button class="btn sm" id="aiCustomGo" data-ic="msg">실행</button></div>
+          <div class="muted" id="aiNote"></div>
+          <div id="rfResult"></div>
+        </div>
+      </div>
+
+      <div class="tab" id="tab-export">
+        <div class="rf">
+          <div class="row"><span class="lbl">범위</span>
+            <div class="seg" id="expSeg"><button data-s="all" class="on">전체 페이지</button><button data-s="page">현재 페이지</button></div>
+          </div>
+          <div class="fmts" id="fmts"></div>
+          <div class="muted">· 편집·재가공한 텍스트가 그대로 저장됩니다.<br>· <b>검색 가능한 PDF</b>는 원본 이미지 위에 투명 텍스트를 얹어, 모양은 그대로이고 글자 검색·복사가 됩니다.<br>· <b>Excel</b>에는 줄별 신뢰도(70 미만 주황색)와 공문서 항목 시트가 함께 들어갑니다.<br>· 재가공 탭에서 고른 <b>내 항목 템플릿</b>(<span id="expTpl">없음</span>)이 Excel 첫 시트 '추출 항목'으로 들어갑니다.</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<!-- 일괄 처리 -->
+<div class="modal" id="mBatch">
+  <div class="mbox">
+    <div class="mh"><span data-ic="files"></span><h3>폴더 일괄 처리</h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
+    <div class="mb">
+      <div class="field"><label>입력 폴더 (스캔 이미지·PDF가 있는 곳)</label><div class="row"><input type="text" id="bIn" placeholder="예: D:\스캔\2026-11-06"><button class="btn sm" data-pick="bIn" data-ic="folder">찾아보기</button></div></div>
+      <div class="field"><label>출력 폴더 (결과 저장 위치, 하위 폴더 구조 유지)</label><div class="row"><input type="text" id="bOut" placeholder="예: D:\OCR결과"><button class="btn sm" data-pick="bOut" data-ic="folder">찾아보기</button></div></div>
+      <div class="field"><label>저장 형식</label><div class="chips" id="bFmts"></div></div>
+      <div class="field"><label>내 항목 추출 (파일마다 한 줄씩 엑셀로 모음)</label><select id="bTpl" style="width:100%"></select></div>
+      <div class="field"><label>옵션</label>
+        <div class="row" style="flex-wrap:wrap;gap:14px">
+          <label class="ck"><input type="checkbox" id="bRec" checked>하위 폴더 포함</label>
+          <label class="ck"><input type="checkbox" id="bSkip" checked>이미 처리된 파일 건너뛰기</label>
+          <label class="ck"><input type="checkbox" id="bClean">줄바꿈 정리</label>
+          <label class="ck"><input type="checkbox" id="bMask">개인정보 마스킹</label>
+        </div>
+      </div>
+      <div class="muted" id="bEngNote"></div>
+      <div id="bRun" hidden>
+        <div class="row" style="justify-content:space-between;margin-bottom:6px"><b id="bStat">-</b><span class="muted" id="bCur"></span></div>
+        <div class="bigprog"><i id="bBar"></i></div>
+        <div class="log" id="bLog" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="mf"><button class="btn" data-close>닫기</button><button class="btn danger" id="bStop" hidden data-ic="stop">중지</button><button class="btn primary" id="bStart" data-ic="play">시작</button></div>
+  </div>
+</div>
+
+<!-- 항목 템플릿 편집 -->
+<div class="modal" id="mTpl">
+  <div class="mbox wide">
+    <div class="mh"><span data-ic="clipboard"></span><h3>내 항목 템플릿</h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
+    <div class="mb">
+      <div class="tpl-top">
+        <select id="tEdSel"></select>
+        <button class="btn sm" id="tNew" data-ic="file">새 템플릿</button>
+        <button class="btn sm" id="tDup" data-ic="copy">복제</button>
+        <button class="btn sm danger" id="tDel" data-ic="trash">삭제</button>
+      </div>
+      <div class="field"><label>템플릿 이름</label><input type="text" id="tName" style="width:100%"></div>
+      <table class="ftbl"><thead><tr><th style="width:150px">항목명 (엑셀 열 이름)</th><th style="width:150px">찾는 방법</th><th>설정</th><th style="width:110px">값 변환</th><th style="width:56px">여러 개</th><th style="width:200px">현재 문서 결과</th><th style="width:34px"></th></tr></thead><tbody id="tRows"></tbody></table>
+      <div class="row"><button class="btn sm" id="tAdd" data-ic="file">항목 추가</button><span class="sp" style="flex:1"></span><button class="btn sm" id="tTest" data-ic="play">현재 문서로 미리보기</button></div>
+      <div class="muted">· <b>라벨 뒤 값</b>: 문서에 '사업기간: ○○'처럼 이름표가 있을 때. <code>사업기간|기간</code>처럼 |로 여러 표현을 적으면 먼저 찾은 것을 씁니다. OCR 띄어쓰기 오류(사 업 기 간)도 찾습니다.<br>· <b>형식</b>: 날짜·기간·금액·전화·이메일·문서번호·사업자번호 등 모양으로 찾기. <b>여러 개</b>를 켜면 모두 모읍니다.<br>· <b>정규식</b>: 괄호( ) 안 부분이 값이 됩니다. · <b>AI가 찾기</b>: 이름표가 없는 내용(예: 사업 목적, 요청 사항). Ollama 필요.</div>
+    </div>
+    <div class="mf"><button class="btn" data-close>취소</button><button class="btn primary" id="tSave" data-ic="check">저장</button></div>
+  </div>
+</div>
+
+<!-- 시스템 입력 도우미 -->
+<div class="modal" id="mHelper">
+  <div class="mbox">
+    <div class="mh"><span data-ic="cpu"></span><h3>시스템 입력 도우미</h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
+    <div class="mb guide">
+      <p style="line-height:1.7;color:var(--text-2)">업무 시스템(웹) 화면 위에 작은 창을 띄워 항목 값을 입력 칸에 바로 채웁니다. 시스템을 고치거나 따로 프로그램을 설치하지 않습니다.</p>
+      <div class="box"><h5>1. 설치 (한 번만)</h5>
+        <div class="row" style="flex-wrap:wrap;gap:8px"><a class="bm" id="bmLink" href="#" title="북마크바로 끌어다 놓으세요">⤓ IUX 입력 도우미</a><span class="muted">← 이 버튼을 브라우저 <b>북마크바로 끌어다 놓기</b></span></div>
+        <div class="row" style="margin-top:8px"><button class="btn sm" id="bmCopy" data-ic="copy">주소 복사</button><span class="muted">끌어놓기가 안 되면: 북마크 추가 → 이름 'IUX 입력 도우미' → URL 칸에 붙여넣기</span></div>
+      </div>
+      <div class="box"><h5>2. 사용</h5>
+        <ol><li>IUX OCR <b>항목</b> 탭에서 값을 확인·수정</li>
+        <li>업무 시스템의 입력 화면에서 북마크 <b>IUX 입력 도우미</b> 클릭 → 오른쪽 위에 도우미 창</li>
+        <li><b>처음 한 번</b>: '순서대로 지정'을 누르고 시스템의 입력 칸을 항목 순서대로 클릭 → 값이 들어가고 칸 위치를 기억</li>
+        <li><b>다음 문서부터</b>: '자동 채우기' 한 번 → 눈으로 확인 → 시스템에서 저장 → '확인 완료 → 다음 문서'</li></ol>
+        <div class="row" style="margin-top:8px"><a class="btn sm" href="/helper-demo" target="_blank">연습용 가상 등록 화면 열기</a></div>
+      </div>
+      <div class="muted" style="line-height:1.7">· 값은 이 PC의 IUX OCR에서만 가져오며, 설치 링크 안의 비밀 키가 있어야 읽을 수 있습니다.<br>· 도우미는 <b>저장 버튼을 누르지 않습니다</b>. 채운 내용을 확인한 뒤 직접 저장하세요.<br>· 선택 목록(예: 생산기관)은 글자가 같은 항목을 골라 줍니다. 날짜 형식이 다르면 항목 편집의 <b>값 변환</b>에서 맞추세요.<br>· 시스템 보안 설정으로 연결이 막히면 <button class="btn sm" id="hlCopy" style="height:24px">도우미용 복사</button> 후 도우미 창에 붙여넣으면 됩니다.<br>· 기관 보안 정책상 북마클릿 사용이 허용되는지 담당자에게 먼저 확인하세요.</div>
+    </div>
+    <div class="mf"><button class="btn primary" data-close>확인</button></div>
+  </div>
+</div>
+
+<!-- 엔진 안내 -->
+<div class="modal" id="mHelp">
+  <div class="mbox">
+    <div class="mh"><span data-ic="cpu"></span><h3>OCR 엔진 상태 · 설치 안내</h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
+    <div class="mb guide" id="helpBody"></div>
+    <div class="mf"><button class="btn" id="helpRefresh" data-ic="refresh">상태 다시 확인</button><button class="btn primary" data-close>확인</button></div>
+  </div>
+</div>
+
+<div class="dropall" id="dropAll">여기에 놓으면 문서가 추가됩니다</div>
+<div id="toasts"></div>
+
+<script>
+"use strict";
+/* ---------- 아이콘 (Lucide, 오프라인 인라인) ---------- */
+const IC={
+ files:'<path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/>',
+ moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+ sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+ info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+ left:'<path d="m15 18-6-6 6-6"/>', right:'<path d="m9 18 6-6-6-6"/>',
+ zoomin:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6"/><path d="M8 11h6"/>',
+ zoomout:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/>',
+ fit:'<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+ play:'<polygon points="6 3 20 12 6 21 6 3"/>',
+ scan:'<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/>',
+ stop:'<rect width="14" height="14" x="5" y="5" rx="1"/>',
+ text:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+ wand:'<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/>',
+ download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+ eraser:'<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
+ clipboard:'<rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
+ shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+ tree:'<path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/>',
+ replace:'<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+ spell:'<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
+ align:'<path d="M15 12H3"/><path d="M17 18H3"/><path d="M21 6H3"/>',
+ braces:'<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
+ table:'<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+ book:'<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+ lang:'<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
+ msg:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+ x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+ check:'<path d="M20 6 9 17l-5-5"/>',
+ copy:'<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+ trash:'<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+ folder:'<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>',
+ cpu:'<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
+ loader:'<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+ refresh:'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+ file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+ image:'<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+ undo:'<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+ eye:'<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+};
+const ic=(n,cls='')=>`<svg class="i ${cls}" viewBox="0 0 24 24">${IC[n]||''}</svg>`;
+function paintIcons(root=document){root.querySelectorAll('[data-ic]').forEach(el=>{if(el.dataset.icDone)return;el.insertAdjacentHTML('afterbegin',ic(el.dataset.ic));el.dataset.icDone=1});}
+
+/* ---------- 유틸 ---------- */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LOW=70;
+function toast(msg,err=false){const t=document.createElement('div');t.className='toast'+(err?' err':'');t.innerHTML=ic(err?'x':'check')+`<span>${esc(msg)}</span>`;$('#toasts').append(t);setTimeout(()=>t.remove(),err?6000:2600);}
+async function api(path,opt={}){
+  const o={...opt};delete o.raw;
+  if(o.json!==undefined){o.method=o.method||'POST';o.headers={'Content-Type':'application/json'};o.body=JSON.stringify(o.json);delete o.json;}
+  const r=await fetch(path,o);
+  if(!r.ok){let m=r.statusText;try{const j=await r.json();m=j.detail||m}catch(e){}throw new Error(typeof m==='string'?m:JSON.stringify(m));}
+  if(opt.raw)return r;
+  const ct=r.headers.get('content-type')||'';
+  return ct.includes('application/json')?r.json():r;
+}
+const store={get(k,d){try{const v=localStorage.getItem('iuxocr.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('iuxocr.'+k,JSON.stringify(v))}catch(e){}}};
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
+function linesToText(lines){const out=[];let prev=null;for(const l of lines){if(prev!==null&&l.block!==prev)out.push('');out.push(l.text);prev=l.block;}return out.join('\n');}
+
+/* ---------- 상태 ---------- */
+const S={
+  engines:null, docs:[], doc:null, page:0, view:'image', boxes:true, zoom:null, sel:-1,
+  editMode:store.get('editMode','lines'), running:false, stop:false,
+  set:Object.assign({engine:'tesseract',lang:'kor+eng',psm:'4',vlm:'',llm:'',pre:{deskew:true,contrast:true,upscale:true,denoise:false,binarize:false,orient:false,fixSpacing:true}},store.get('settings',{})),
+  scope:'page', expScope:'all', rf:null,
+};
+const saveSet=()=>store.set('settings',S.set);
+const curPage=()=>S.doc?.pages[S.page];
+
+/* ---------- 엔진 상태 ---------- */
+async function loadEngines(){
+  try{S.engines=await api('/api/engines')}catch(e){toast('서버에 연결할 수 없습니다: '+e.message,true);return}
+  const E=S.engines;
+  const pill=(on,warn,label,sub)=>`<button class="pill" data-help><span class="dot ${on?(warn?'warn':'on'):''}"></span><b>${label}</b><span>${esc(sub)}</span></button>`;
+  const t=E.tesseract,p=E.paddle,o=E.ollama;
+  $('#pills').innerHTML=
+    pill(t.available,t.available&&!t.has_kor,'Tesseract',t.available?(t.has_kor?'v'+t.version.split(' ')[0]:'한국어 데이터 없음'):'미설치')+
+    pill(p.available,false,'PaddleOCR',p.available?'사용 가능':'미설치')+
+    pill(o.available,false,'Ollama',o.available?`모델 ${o.models.length}개`:'꺼짐');
+  $$('[data-help]').forEach(b=>b.onclick=openHelp);
+  // 엔진 버튼
+  $$('#engSel button').forEach(b=>{const e=b.dataset.e;const ok=e==='tesseract'?t.available:e==='paddle'?p.available:(o.available&&o.vision.length>0);b.disabled=!ok;b.title=ok?'':(e==='ollama'&&o.available?'비전(이미지) 모델이 없습니다. 예: ollama pull qwen2.5vl:7b':(E[e]?.reason||'사용 불가'))});
+  if($(`#engSel button[data-e="${S.set.engine}"]`)?.disabled){const f=$$('#engSel button').find(b=>!b.disabled);S.set.engine=f?f.dataset.e:'tesseract'}
+  $('#vlmSel').innerHTML=(o.vision||[]).map(m=>`<option ${m===S.set.vlm?'selected':''}>${esc(m)}</option>`).join('');
+  if(!S.set.vlm&&o.vision?.length)S.set.vlm=o.vision[0];
+  const txtModels=(o.models||[]);
+  $('#llmSel').innerHTML=txtModels.length?txtModels.map(m=>`<option ${m===S.set.llm?'selected':''}>${esc(m)}</option>`).join(''):'<option value="">모델 없음</option>';
+  if(!S.set.llm&&txtModels.length)S.set.llm=txtModels.find(m=>!/vl|vision|llava|moondream/i.test(m))||txtModels[0];
+  $('#llmSel').value=S.set.llm||'';
+  $$('#aiTools .tool').forEach(b=>b.disabled=!o.available);
+  $('#aiCustomGo').disabled=!o.available;
+  $('#aiNote').innerHTML=o.available?'':'AI 재가공은 Ollama 실행 시 켜집니다. 일반 재가공만으로도 모든 작업이 됩니다. <a href="#" data-help2>설치 안내</a>';
+  $$('[data-help2]').forEach(a=>a.onclick=e=>{e.preventDefault();openHelp()});
+  renderSettings();
+}
+function renderSettings(){
+  $$('#engSel button').forEach(b=>b.classList.toggle('on',b.dataset.e===S.set.engine));
+  $('#rowVlm').hidden=S.set.engine!=='ollama';
+  $('#rowLang').hidden=S.set.engine!=='tesseract';
+  $('#langSel').value=S.set.lang;$('#psmSel').value=S.set.psm;
+  $$('#preChips .chip').forEach(c=>{c.classList.toggle('on',!!S.set.pre[c.dataset.k]);if(c.dataset.k==='fixSpacing')c.hidden=S.set.engine!=='tesseract'});
+}
+function openHelp(){
+  const E=S.engines||{tesseract:{},paddle:{},ollama:{}};
+  const b=(on)=>`<span class="badge ${on?'on':'off'}">${on?'사용 가능':'사용 불가'}</span>`;
+  $('#helpBody').innerHTML=`
+  <div class="box"><h5>빠름 · Tesseract ${b(E.tesseract.available&&E.tesseract.has_kor)}</h5>
+   <div class="muted" style="margin-bottom:6px">모든 PC에서 동작. 기본 엔진. ${E.tesseract.path?'경로: <code>'+esc(E.tesseract.path)+'</code>':''} ${E.tesseract.reason?'<br>⚠ '+esc(E.tesseract.reason):''}</div>
+   <ol><li>Windows: UB Mannheim 설치 파일(tesseract-ocr-w64-setup) 실행 → <b>Additional language data에서 Korean 체크</b></li>
+   <li>기본 경로(<code>C:\\Program Files\\Tesseract-OCR</code>)에 설치하면 자동으로 찾습니다.</li>
+   <li>인터넷이 없는 PC: 설치 파일을 USB로 옮겨 설치하거나, 프로그램 폴더의 <code>bin\\tesseract</code>에 통째로 복사(포터블).</li>
+   <li>정확도 향상: <code>kor.traineddata</code>(tessdata_best)를 프로그램 폴더 <code>tessdata\\</code>에 넣으면 우선 사용합니다.</li></ol></div>
+  <div class="box"><h5>정확 · PaddleOCR (한국어 PP-OCRv5) ${b(E.paddle.available)}</h5>
+   <ol><li><code>install\\install_paddleocr.bat</code> 실행 (약 1GB, 인터넷 필요)</li><li>첫 인식 때 한국어 모델(약 20MB)을 받습니다. 이후엔 오프라인으로 동작합니다.</li><li>GPU 없이 일반 PC(CPU)에서 실사용 속도. 한글 정확도가 Tesseract보다 높습니다.</li></ol></div>
+  <div class="box"><h5>AI · Ollama ${b(E.ollama.available)}</h5>
+   <div class="muted" style="margin-bottom:6px">${E.ollama.available?'설치된 모델: '+E.ollama.models.map(esc).join(', '):esc(E.ollama.reason||'')}</div>
+   <ol><li>ollama.com 에서 Ollama 설치 후 실행</li><li>AI OCR(비전): <code>ollama pull qwen2.5vl:7b</code> (VRAM 8GB↑ 권장, 가벼운 PC는 <code>qwen2.5vl:3b</code>)</li>
+   <li>AI 재가공(텍스트): <code>ollama pull qwen2.5:7b</code> 또는 <code>gemma3:4b</code></li><li>모델을 한 번 받아두면 인터넷 없이 동작합니다.</li></ol></div>`;
+  $('#mHelp').classList.add('on');
+}
+
+/* ---------- 문서 ---------- */
+async function loadDocs(selectId){
+  S.docs=await api('/api/docs');
+  $('#docCount').textContent=S.docs.length||'';
+  $('#docs').innerHTML=S.docs.length?S.docs.map(d=>`<div class="doc ${S.doc?.id===d.id?'on':''}" data-id="${d.id}">
+     <div class="ico">${ic(/\.pdf$/i.test(d.name)?'file':'image')}</div>
+     <div class="meta"><div class="nm" title="${esc(d.name)}">${esc(d.name)}</div>
+     <div class="sub">${d.done}/${d.pages}p ${d.checked?'<span class="chk">✓ 확인</span>':d.filled?`<span class="fil">항목 ${d.filled}</span>`:''}<span class="bar"><i style="width:${d.pages?d.done/d.pages*100:0}%"></i></span></div></div>
+     <button class="btn icon sm ghost del" data-del="${d.id}" title="삭제">${ic('trash')}</button></div>`).join('')
+   :'<div class="empty-side">아직 문서가 없습니다.</div>';
+  $$('#docs .doc').forEach(el=>el.onclick=e=>{if(e.target.closest('[data-del]'))return;openDoc(el.dataset.id)});
+  $$('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('이 문서를 작업 목록에서 삭제할까요? (원본 파일은 그대로입니다)'))return;await api('/api/docs/'+b.dataset.del,{method:'DELETE'});if(S.doc?.id===b.dataset.del){S.doc=null;renderAll()}loadDocs()});
+  if(selectId)openDoc(selectId);
+}
+async function openDoc(id,page=0,fromHelper=false){
+  S.doc=await api('/api/docs/'+id);S.page=Math.min(page,S.doc.pages.length-1);S.sel=-1;S.rf=null;S.copied=new Set();
+  if(!fromHelper)syncSelect();
+  S.view=curPage()?.result?.pre?'proc':'image';S.zoom=null;
+  $$('#docs .doc').forEach(el=>el.classList.toggle('on',el.dataset.id===id));
+  renderAll();
+  if(S.tab==='fields')ensureFields();else renderFields();
+}
+function renderThumbs(){
+  if(!S.doc){$('#thumbs').innerHTML='';$('#pageCount').textContent='';return}
+  $('#pageCount').textContent=S.doc.pages.length+'p';
+  $('#thumbs').innerHTML=S.doc.pages.map((p,i)=>{
+    const r=p.result;let st='';
+    if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':'AI')}</span>`}
+    return `<div class="th ${i===S.page?'on':''}" data-i="${i}"><img loading="lazy" src="/api/docs/${S.doc.id}/file/thumb/${i}"><span class="no">${i+1}</span>${st}</div>`}).join('');
+  $$('#thumbs .th').forEach(el=>el.onclick=()=>gotoPage(+el.dataset.i));
+}
+function setThumbRunning(i){const el=$(`#thumbs .th[data-i="${i}"]`);if(!el)return;el.querySelector('.st')?.remove();el.insertAdjacentHTML('beforeend','<span class="st run">…</span>')}
+function gotoPage(i){if(!S.doc)return;S.page=Math.max(0,Math.min(S.doc.pages.length-1,i));S.sel=-1;S.view=curPage()?.result?.pre?'proc':'image';renderAll();$(`#thumbs .th[data-i="${S.page}"]`)?.scrollIntoView({block:'nearest'})}
+
+/* ---------- 뷰어 ---------- */
+function renderViewer(){
+  const p=curPage();
+  $('#welcome').hidden=!!p;$('#stage').hidden=!p;
+  $('#pgLabel').textContent=p?`${S.page+1} / ${S.doc.pages.length}`:'-';
+  $('#vName').textContent=S.doc?.name||'';
+  const hasProc=!!p?.result?.pre;
+  $$('#viewSeg button').forEach(b=>{b.classList.toggle('on',b.dataset.v===S.view);if(b.dataset.v==='proc')b.disabled=!hasProc});
+  $('#viewer .vnote')?.remove();
+  if(!p)return;
+  const kind=S.view==='proc'&&hasProc?'proc':'image';
+  const img=$('#pimg');
+  const src=`/api/docs/${S.doc.id}/file/${kind}/${S.page}?t=${p.result?.at||0}`;
+  if(img.dataset.src!==src){img.dataset.src=src;img.onload=()=>{img.dataset.w=img.naturalWidth;img.dataset.h=img.naturalHeight;applyZoom()};img.src=src}else applyZoom();
+  const pre=p.result?.pre;
+  if(kind==='image'&&pre&&(pre.skew||pre.rotate)&&S.boxes&&p.result.lines?.some(l=>l.box))
+    $('#viewer').insertAdjacentHTML('afterbegin',`<div class="vnote">기울기를 ${pre.skew}° 보정해 인식했습니다 · 정확한 영역은 <b>전처리</b> 보기에서 확인</div>`);
+  drawBoxes();
+}
+function applyZoom(){
+  const img=$('#pimg'),w=+img.dataset.w||1,h=+img.dataset.h||1,vw=$('#viewer').clientWidth-48,vh=$('#viewer').clientHeight-48;
+  const fit=Math.min(vw/w,vh/h,1.5);const z=S.zoom??fit;
+  $('#stage').style.width=Math.round(w*z)+'px';$('#stage').style.height=Math.round(h*z)+'px';
+  $('#zLabel').textContent=S.zoom==null?'맞춤':Math.round(z*100)+'%';
+}
+function zoomBy(f){const img=$('#pimg'),w=+img.dataset.w||1;const cur=S.zoom??($('#stage').offsetWidth/w);S.zoom=Math.max(.1,Math.min(4,cur*f));applyZoom()}
+function drawBoxes(){
+  const p=curPage(),svg=$('#overlay');
+  if(!p?.result||!S.boxes){svg.innerHTML='';return}
+  svg.innerHTML=p.result.lines.map((l,i)=>l.box?`<rect class="bx ${l.conf!=null&&l.conf<LOW?'low':''} ${i===S.sel?'sel':''}" data-i="${i}" x="${l.box[0]}" y="${l.box[1]}" width="${l.box[2]}" height="${l.box[3]}"><title>${i+1}. ${esc(l.text)} (${l.conf??'-'})</title></rect>`:'').join('');
+  svg.querySelectorAll('rect').forEach(r=>r.onclick=()=>selectLine(+r.dataset.i,true));
+}
+function selectLine(i,fromBox=false){
+  S.sel=i;drawBoxes();
+  $$('.ln').forEach(el=>el.classList.toggle('sel',+el.dataset.i===i));
+  if(fromBox){if(S.editMode!=='lines'){S.editMode='lines';renderText()}const el=$(`.ln[data-i="${i}"]`);el?.scrollIntoView({block:'center',behavior:'smooth'});el?.querySelector('.tx')?.focus()}
+  else{const r=$(`#overlay rect[data-i="${i}"]`);if(r){const v=$('#viewer'),st=$('#stage'),box=curPage().result.lines[i].box;const y=st.offsetTop+box[1]*st.offsetHeight-v.clientHeight/3;const x=st.offsetLeft+box[0]*st.offsetWidth-40;v.scrollTo({top:y,left:Math.max(0,x),behavior:'smooth'})}}
+}
+
+/* ---------- 텍스트 탭 ---------- */
+const savePage=debounce(async()=>{const p=curPage();if(!p?.result)return;try{const r=await api(`/api/docs/${S.doc.id}/pages/${S.page}`,{method:'PUT',json:{text:p.result.text,lines:p.result.lines}});}catch(e){toast('저장 실패: '+e.message,true)}},500);
+function renderStats(){
+  const p=curPage(),r=p?.result;
+  if(!r){$('#stats').innerHTML='';return}
+  const low=r.lines.filter(l=>l.conf!=null&&l.conf<LOW).length;
+  const eng={tesseract:'Tesseract',paddle:'PaddleOCR','pdf-text':'PDF 내장 텍스트',manual:'직접 입력'}[r.engine]||r.engine.replace('ollama:','AI · ');
+  $('#stats').innerHTML=`<span class="stat">엔진 <b>${esc(eng)}</b></span>`+
+   (r.mean_conf!=null?`<span class="stat">평균 신뢰도 <b>${r.mean_conf}</b></span>`:'')+
+   (low?`<span class="stat warn">확인 필요 <b>${low}줄</b></span>`:'')+
+   (r.time_ms?`<span class="stat">${(r.time_ms/1000).toFixed(1)}초</span>`:'')+
+   `<span class="sp"></span><div class="seg" id="modeSeg"><button data-m="lines" class="${S.editMode==='lines'?'on':''}">줄별</button><button data-m="full" class="${S.editMode==='full'?'on':''}">전체</button></div>`+
+   `<button class="btn icon sm ghost" id="copyText" title="전체 복사">${ic('copy')}</button>`;
+  $$('#modeSeg button').forEach(b=>b.onclick=()=>{S.editMode=b.dataset.m;store.set('editMode',S.editMode);renderText()});
+  $('#copyText').onclick=()=>{navigator.clipboard?.writeText(r.text).then(()=>toast('복사했습니다'),()=>toast('복사 실패',true))};
+}
+function renderText(){
+  renderStats();
+  const p=curPage(),body=$('#textBody');
+  if(!p){body.innerHTML='<div class="placeholder">문서를 추가하세요.</div>';return}
+  const r=p.result;
+  if(!r){body.innerHTML=`<div class="placeholder">${ic('scan')}<br>아직 인식하지 않은 페이지입니다.<br><b>이 페이지 인식</b>을 누르세요. <span class="muted">(Ctrl+Enter)</span></div>`;return}
+  if(S.editMode==='full'){
+    body.innerHTML='<textarea class="full" id="fullText" spellcheck="false"></textarea>';
+    const ta=$('#fullText');ta.value=r.text;
+    ta.oninput=()=>{r.text=ta.value;r.edited=true;savePage()};
+    return;
+  }
+  const diverged=r.text!==linesToText(r.lines);
+  let h=diverged?`<div class="banner">${ic('info')}<span>전체 보기나 재가공에서 수정된 텍스트입니다. 줄별 편집은 원래 인식 줄 기준입니다.</span><button class="btn sm" id="toFull">전체 보기</button></div>`:'';
+  h+='<div class="lines">';let prev=null;
+  r.lines.forEach((l,i)=>{
+    if(prev!==null&&l.block!==prev)h+='<div class="gap"></div>';prev=l.block;
+    const lowc=l.conf!=null&&l.conf<LOW;
+    h+=`<div class="ln ${lowc?'low':''} ${i===S.sel?'sel':''}" data-i="${i}"><span class="n">${i+1}</span><div class="tx" contenteditable="plaintext-only" spellcheck="false">${esc(l.text)}</div><span class="cf ${l.conf==null?'none':lowc?'low':''}">${l.conf==null?'-':Math.round(l.conf)}</span></div>`;
+  });
+  h+='</div>';body.innerHTML=h;
+  $('#toFull')?.addEventListener('click',()=>{S.editMode='full';renderText()});
+  $$('.ln').forEach(el=>{
+    const i=+el.dataset.i,tx=el.querySelector('.tx');
+    tx.onfocus=()=>{if(S.sel!==i)selectLine(i)};
+    tx.oninput=()=>{r.lines[i].text=tx.innerText.replace(/\n/g,' ');if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage()};
+    tx.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const n=$(`.ln[data-i="${i+1}"] .tx`);n?.focus()}};
+  });
+}
+
+/* ---------- OCR 실행 ---------- */
+function ocrPayload(page){return{page,engine:S.set.engine,lang:S.set.lang,psm:+S.set.psm,model:S.set.vlm||null,pre:S.set.pre,fix_spacing:!!S.set.pre.fixSpacing}}
+function setRunning(on,frac){S.running=on;$('#runPage').disabled=on||!S.doc;$('#runAll').disabled=on||!S.doc;$('#runStop').hidden=!on;$('#prog').classList.toggle('show',on);$('#prog i').style.width=((frac||0)*100)+'%';
+  $('#runPage').innerHTML=(on?ic('loader','spin'):ic('play'))+(on?'인식 중…':'이 페이지 인식');}
+async function runOcr(indices){
+  if(!S.doc||S.running)return;
+  if(S.set.engine==='ollama'&&!S.set.vlm){toast('AI 비전 모델을 선택하세요',true);return}
+  S.stop=false;setRunning(true,0);let done=0,fails=0;
+  for(const i of indices){
+    if(S.stop)break;
+    setThumbRunning(i);
+    try{const pg=await api(`/api/docs/${S.doc.id}/ocr`,{json:ocrPayload(i)});S.doc.pages[i]=pg;}
+    catch(e){fails++;toast(`${i+1}페이지: ${e.message}`,true)}
+    done++;setRunning(true,done/indices.length);
+    if(i===S.page){S.view='proc';S.sel=-1;renderViewer();renderText()}
+    renderThumbs();
+  }
+  setRunning(false);
+  if(!fails)toast(indices.length>1?`${done}페이지 인식 완료`:'인식 완료');
+  renderAll();
+  if(S.set.tpl&&S.doc&&!S.doc.fields?.edited)await ensureFields(true);
+  loadDocs();
+}
+
+/* ---------- 재가공 ---------- */
+function scopePages(){return S.scope==='all'?S.doc.pages.filter(p=>p.result):(curPage()?.result?[curPage()]:[])}
+async function runRefine(kind,key,extra={}){
+  if(!S.doc){toast('문서를 먼저 추가하세요',true);return}
+  const pages=scopePages();
+  if(!pages.length){toast('인식된 페이지가 없습니다. 먼저 OCR을 실행하세요.',true);return}
+  const box=$('#rfResult');
+  if(key==='fields'){
+    const text=pages.map(p=>p.result.text).join('\n');
+    const r=await api('/api/refine',{json:{mode:'fields',text}});
+    S.rf={kind:'fields',fields:r.fields};renderRefine();return;
+  }
+  const isAI=kind==='ai';
+  if(isAI&&!S.set.llm){toast('AI 모델을 선택하세요',true);return}
+  box.innerHTML=`<div class="result"><div class="rh">${ic('loader','spin')} ${isAI?'AI가 처리 중입니다… (모델·사양에 따라 수십 초)':'처리 중…'}</div></div>`;
+  const results=[];let counts={};
+  try{
+    for(const p of pages){
+      let after;
+      if(key==='replace'){after=doReplace(p.result.text,extra)}
+      else{
+        const r=await api('/api/refine',{json:{mode:key,text:p.result.text,ai:isAI,model:isAI?S.set.llm:null,custom:extra.custom||null,opts:{}}});
+        after=r.text;if(r.counts)for(const[k,v]of Object.entries(r.counts))counts[k]=(counts[k]||0)+v;
+      }
+      results.push({index:p.index,before:p.result.text,after});
+    }
+  }catch(e){box.innerHTML='';toast(e.message,true);return}
+  const label={body:'본문 추출',clean:'줄바꿈·공백 정리',mask:'개인정보 마스킹',outline:'항목체계 → 개요',replace:'찾아 바꾸기',fix:'AI 오탈자 교정',summary:'AI 요약',structure:'AI 공문서 구조화',table:'AI 표 정리',plain:'AI 쉬운 말로',translate:'AI 영어 번역',custom:'AI 직접 지시'}[key];
+  const derived=['body','summary','structure','translate','plain','custom'].includes(key); // 원문을 대체하기보다 별도 결과
+  S.rf={kind:'text',key,label,results,counts,derived,showBefore:false};renderRefine();
+}
+function doReplace(text,{find,rep,regex}){
+  if(!find)return text;
+  if(regex){try{return text.replace(new RegExp(find,'g'),rep)}catch(e){throw new Error('정규식 오류: '+e.message)}}
+  return text.split(find).join(rep);
+}
+function renderRefine(){
+  const box=$('#rfResult'),rf=S.rf;
+  if(!rf){box.innerHTML='';return}
+  requestAnimationFrame(()=>box.scrollIntoView({block:'nearest',behavior:'smooth'}));
+  if(rf.kind==='custom'){
+    const vals=rf.values,found=vals.filter(v=>v.value).length;
+    box.innerHTML=`<div class="result"><div class="rh">${ic('clipboard')}<span class="ttl">${esc(rf.tpl.name)}</span><span class="cnt">· ${found}/${vals.length}개 찾음</span><span class="sp"></span><button class="btn sm" id="fCopy">${ic('copy')}복사</button><button class="btn sm" id="fCsv">${ic('download')}CSV</button><button class="btn icon sm ghost" id="rfClose">${ic('x')}</button></div>
+      <table class="fields">${vals.map((v,i)=>`<tr><td>${esc(v.name)}</td><td contenteditable="plaintext-only" data-fi="${i}" style="white-space:pre-wrap;${v.value?'':'color:var(--text-3)'}">${esc(v.value)||''}</td></tr>`).join('')}</table>
+      <div class="rf2 muted">빈 칸은 못 찾은 항목입니다. 값을 눌러 고칠 수 있고, <b>항목 편집</b>에서 찾는 방법을 바꿀 수 있습니다.${vals.some(v=>v.note&&v.note!=='ai')?'<br>'+vals.filter(v=>v.note&&v.note!=='ai').map(v=>esc(v.name+': '+v.note)).join('<br>'):''}</div></div>`;
+    $$('[data-fi]').forEach(td=>td.oninput=()=>vals[+td.dataset.fi].value=td.innerText);
+    $('#fCopy').onclick=()=>navigator.clipboard?.writeText(vals.map(v=>v.name).join('\t')+'\n'+vals.map(v=>v.value.replace(/[\t\n]+/g,' ')).join('\t')).then(()=>toast('복사했습니다. 엑셀에 붙여넣으면 한 줄로 들어갑니다'));
+    $('#fCsv').onclick=()=>{const q=x=>'"'+String(x).replace(/"/g,'""')+'"';const csv='\ufeff'+vals.map(v=>q(v.name)).join(',')+'\n'+vals.map(v=>q(v.value)).join(',');dl(new Blob([csv],{type:'text/csv'}),S.doc.name.replace(/\.[^.]+$/,'')+'_'+rf.tpl.name+'.csv')};
+    $('#rfClose').onclick=()=>{S.rf=null;renderRefine()};
+    return;
+  }
+  if(rf.kind==='fields'){
+    box.innerHTML=`<div class="result"><div class="rh">${ic('clipboard')} 공문서 항목 ${rf.fields.length}개<span class="sp"></span><button class="btn sm" id="fCopy">${ic('copy')}표 복사</button><button class="btn sm" id="fCsv">${ic('download')}CSV</button><button class="btn icon sm ghost" id="rfClose">${ic('x')}</button></div>
+      ${rf.fields.length?`<table class="fields">${rf.fields.map((f,i)=>`<tr><td>${esc(f.label)}</td><td contenteditable="plaintext-only" data-fi="${i}">${esc(f.value)}</td></tr>`).join('')}</table>`:'<div class="placeholder">공문서 항목을 찾지 못했습니다.<br>먼저 <b>줄바꿈·공백 정리</b>나 오탈자 교정을 해보세요.</div>'}
+      <div class="rf2 muted">값을 눌러 바로 고칠 수 있습니다. Excel 내보내기에도 '공문서 항목' 시트로 들어갑니다.</div></div>`;
+    $$('[data-fi]').forEach(td=>td.oninput=()=>rf.fields[+td.dataset.fi].value=td.innerText);
+    const tsv=()=>rf.fields.map(f=>f.label+'\t'+f.value).join('\n');
+    $('#fCopy').onclick=()=>navigator.clipboard?.writeText(tsv()).then(()=>toast('복사했습니다. 엑셀에 붙여넣기 하세요'));
+    $('#fCsv').onclick=()=>{const csv='\ufeff항목,값\n'+rf.fields.map(f=>`"${f.label}","${f.value.replace(/"/g,'""')}"`).join('\n');dl(new Blob([csv],{type:'text/csv'}),(S.doc.name.replace(/\.[^.]+$/,''))+'_공문서항목.csv')};
+    $('#rfClose').onclick=()=>{S.rf=null;renderRefine()};
+    return;
+  }
+  const multi=rf.results.length>1;
+  const after=rf.results.map(r=>(multi?`===== ${r.index+1} 페이지 =====\n`:'')+r.after).join('\n\n');
+  const before=rf.results.map(r=>(multi?`===== ${r.index+1} 페이지 =====\n`:'')+r.before).join('\n\n');
+  const cnt=Object.entries(rf.counts||{}).map(([k,v])=>`${k} ${v}건`).join(' · ');
+  const changed=rf.results.some(r=>r.after!==r.before);
+  box.innerHTML=`<div class="result"><div class="rh">${ic(rf.key==='mask'?'shield':'wand')}<span class="ttl">${esc(rf.label)}</span>${cnt?`<span class="cnt" title="${esc(cnt)}">· ${esc(cnt)}</span>`:''}<span class="sp"></span><button class="btn sm ghost" id="rfBefore" title="변경 전 텍스트">${ic('eye')}${rf.showBefore?'전 숨기기':'변경 전'}</button><button class="btn icon sm ghost" id="rfClose">${ic('x')}</button></div>
+    ${rf.showBefore?`<div class="before">${esc(before)}</div>`:''}
+    <textarea id="rfText" spellcheck="false" ${multi?'readonly':''}>${esc(after)}</textarea>
+    <div class="rf2">${rf.derived?`<button class="btn sm primary" id="rfCopy">${ic('copy')}복사</button><button class="btn sm" id="rfSave">${ic('download')}TXT로 저장</button><button class="btn sm" id="rfApply" title="현재 페이지 텍스트를 이 결과로 바꿉니다">${ic('check')}본문으로 적용</button>`
+      :`<button class="btn sm primary" id="rfApply" ${changed?'':'disabled'}>${ic('check')}${multi?rf.results.length+'페이지에 ':''}적용</button><button class="btn sm" id="rfCopy">${ic('copy')}복사</button>`}
+      <span class="muted" style="margin-left:auto;align-self:center">${rf.key==='mask'&&changed?'텍스트만 가려집니다 (PDF 배경 이미지는 원본 그대로) · ':''}${changed?(multi?'':'결과를 직접 고친 뒤 적용할 수 있습니다'):'바뀐 내용이 없습니다'}</span></div></div>`;
+  $('#rfBefore').onclick=()=>{rf.showBefore=!rf.showBefore;renderRefine()};
+  $('#rfClose').onclick=()=>{S.rf=null;renderRefine()};
+  $('#rfCopy').onclick=()=>navigator.clipboard?.writeText($('#rfText').value).then(()=>toast('복사했습니다'));
+  $('#rfSave')?.addEventListener('click',()=>dl(new Blob(['\ufeff'+$('#rfText').value],{type:'text/plain'}),S.doc.name.replace(/\.[^.]+$/,'')+'_'+rf.label.replace(/\s/g,'')+'.txt'));
+  $('#rfApply')?.addEventListener('click',async()=>{
+    if(!multi)rf.results[0].after=$('#rfText').value;
+    for(const r of rf.results){const p=S.doc.pages[r.index];p.result.text=r.after;p.result.edited=true;await api(`/api/docs/${S.doc.id}/pages/${r.index}`,{method:'PUT',json:{text:r.after}})}
+    toast(multi?`${rf.results.length}페이지에 적용했습니다`:'적용했습니다');S.rf=null;renderRefine();S.editMode='full';renderText();
+  });
+}
+
+/* ---------- 내 항목 템플릿 ---------- */
+const T={list:[],presets:{},gongmun:{},edit:null,editIdx:0,preview:null};
+const TYPES={label:'라벨 뒤 값',gongmun:'공문서 항목',preset:'형식 (날짜·금액…)',regex:'정규식',body:'본문 전체',ai:'AI가 찾기'};
+async function loadTemplates(){
+  try{const r=await api('/api/templates');T.list=r.templates;T.presets=r.presets;T.gongmun=r.gongmun;T.formats=r.formats}catch(e){return}
+  if(S.set.tpl&&!T.list.some(t=>t.id===S.set.tpl))S.set.tpl='';
+  if(S.set.tpl===undefined)S.set.tpl=T.list[0]?.id||'';
+  const opts=T.list.map(t=>`<option value="${t.id}">${esc(t.name)} · ${t.fields.length}개 항목</option>`).join('');
+  $('#tplSel').innerHTML=opts||'<option value="">템플릿 없음</option>';$('#tplSel').value=S.set.tpl||'';
+  $('#fTpl').innerHTML=opts||'<option value="">템플릿 없음</option>';$('#fTpl').value=S.set.tpl||'';
+  $('#bTpl').innerHTML='<option value="">사용 안 함</option>'+opts;$('#bTpl').value=store.get('bTpl','');
+  renderTplDesc();
+}
+function renderTplDesc(){
+  const t=T.list.find(x=>x.id===S.set.tpl);
+  $('#tplDesc').textContent=t?t.fields.map(f=>f.name).join(' · '):'항목 편집에서 원하는 항목을 만들어 보세요.';
+  $('#expTpl').textContent=t?t.name:'없음';
+}
+function scopeText(){return scopePages().map(p=>p.result.text).join('\n')}
+async function runTemplate(){
+  if(!S.doc)return toast('문서를 먼저 추가하세요',true);
+  const t=T.list.find(x=>x.id===S.set.tpl);if(!t)return toast('템플릿을 고르세요',true);
+  if(!scopePages().length)return toast('인식된 페이지가 없습니다. 먼저 OCR을 실행하세요.',true);
+  const box=$('#rfResult');box.innerHTML=`<div class="result"><div class="rh">${ic('loader','spin')} 항목 추출 중…</div></div>`;
+  try{const r=await api('/api/extract',{json:{text:scopeText(),template_id:t.id,model:S.set.llm||null}});S.rf={kind:'custom',tpl:t,values:r.values};renderRefine()}
+  catch(e){box.innerHTML='';toast(e.message,true)}
+}
+function openTplEditor(){
+  T.edit=JSON.parse(JSON.stringify(T.list));T.editIdx=Math.max(0,T.edit.findIndex(t=>t.id===S.set.tpl));T.preview=null;
+  if(!T.edit.length){T.edit.push({id:'',name:'새 템플릿',fields:[{name:'제목',type:'gongmun',key:'title'}]});T.editIdx=0}
+  renderTplEditor();$('#mTpl').classList.add('on');
+}
+function renderTplEditor(){
+  const ts=T.edit,t=ts[T.editIdx];
+  $('#tEdSel').innerHTML=ts.map((x,i)=>`<option value="${i}">${esc(x.name)}</option>`).join('');$('#tEdSel').value=T.editIdx;
+  $('#tName').value=t.name;
+  const setting=(f,i)=>{
+    if(f.type==='label')return `<input type="text" data-k="label" data-i="${i}" value="${esc(f.label||'')}" placeholder="문서 속 이름표 (예: 사업기간|기간)">`;
+    if(f.type==='gongmun')return `<select data-k="key" data-i="${i}">${Object.entries(T.gongmun).map(([k,v])=>`<option value="${k}" ${f.key===k?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
+    if(f.type==='preset')return `<select data-k="preset" data-i="${i}">${Object.entries(T.presets).map(([k,v])=>`<option value="${k}" ${f.preset===k?'selected':''}>${esc(v)}</option>`).join('')}</select>`;
+    if(f.type==='regex')return `<input type="text" data-k="pattern" data-i="${i}" value="${esc(f.pattern||'')}" placeholder="예: 대상\\s*[:：]\\s*(.+)" style="font-family:var(--mono)">`;
+    if(f.type==='ai')return `<input type="text" data-k="desc" data-i="${i}" value="${esc(f.desc||'')}" placeholder="AI에게 설명 (예: 이 공문이 요청하는 내용)">`;
+    return '<span class="muted" style="line-height:30px">제목·수신 아래부터 붙임·발신명의 전까지</span>';
+  };
+  const pv=i=>{if(!T.preview)return '<div class="pv empty">-</div>';const v=T.preview[i];if(!v)return '<div class="pv empty">-</div>';
+    if(v.note&&v.note!=='ai'&&!v.value)return `<div class="pv err">${esc(v.note)}</div>`;return v.value?`<div class="pv" title="${esc(v.value)}">${esc(v.value)}</div>`:'<div class="pv empty">못 찾음</div>'};
+  $('#tRows').innerHTML=t.fields.map((f,i)=>`<tr>
+    <td><input type="text" data-k="name" data-i="${i}" value="${esc(f.name)}"></td>
+    <td><select data-k="type" data-i="${i}">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${f.type===k?'selected':''}>${v}</option>`).join('')}</select></td>
+    <td>${setting(f,i)}</td>
+    <td><select data-k="fmt" data-i="${i}">${Object.entries(T.formats||{'':'그대로'}).map(([k,v])=>`<option value="${k}" ${(f.fmt||'')===k?'selected':''}>${esc(v)}</option>`).join('')}</select></td>
+    <td style="text-align:center;padding-top:10px">${['label','preset','regex'].includes(f.type)?`<input type="checkbox" data-k="multi" data-i="${i}" ${f.multi?'checked':''}>`:''}</td>
+    <td>${pv(i)}</td>
+    <td><button class="btn icon sm ghost danger" data-rm="${i}" title="삭제">${ic('trash')}</button></td></tr>`).join('');
+  $$('#tRows [data-k]').forEach(el=>{
+    const ev=el.tagName==='SELECT'||el.type==='checkbox'?'change':'input';
+    el.addEventListener(ev,()=>{const f=t.fields[+el.dataset.i],k=el.dataset.k;f[k]=el.type==='checkbox'?el.checked:el.value;
+      if(k==='type'){if(f.type==='gongmun'&&!f.key)f.key='title';if(f.type==='preset'&&!f.preset)f.preset='date';if(f.type==='label'&&!f.label)f.label=f.name;renderTplEditor()}});
+  });
+  $$('[data-rm]').forEach(b=>b.onclick=()=>{t.fields.splice(+b.dataset.rm,1);T.preview=null;renderTplEditor()});
+}
+function bindTpl(){
+  $('#tplSel').onchange=e=>{S.set.tpl=e.target.value;$('#fTpl').value=S.set.tpl;saveSet();renderTplDesc();renderFields()};
+  $('#tplRun').onclick=runTemplate;$('#tplEdit').onclick=openTplEditor;
+  $('#bTpl').onchange=e=>store.set('bTpl',e.target.value);
+  $('#tEdSel').onchange=e=>{T.editIdx=+e.target.value;T.preview=null;renderTplEditor()};
+  $('#tName').oninput=e=>{T.edit[T.editIdx].name=e.target.value;$('#tEdSel').options[T.editIdx].text=e.target.value};
+  $('#tNew').onclick=()=>{T.edit.push({id:'',name:'새 템플릿',fields:[{name:'항목1',type:'label',label:''}]});T.editIdx=T.edit.length-1;T.preview=null;renderTplEditor();$('#tName').select()};
+  $('#tDup').onclick=()=>{const c=JSON.parse(JSON.stringify(T.edit[T.editIdx]));c.id='';c.name+=' 복사본';T.edit.push(c);T.editIdx=T.edit.length-1;renderTplEditor()};
+  $('#tDel').onclick=()=>{if(!confirm('이 템플릿을 삭제할까요?'))return;T.edit.splice(T.editIdx,1);T.editIdx=0;if(!T.edit.length)T.edit.push({id:'',name:'새 템플릿',fields:[]});T.preview=null;renderTplEditor()};
+  $('#tAdd').onclick=()=>{const t=T.edit[T.editIdx];t.fields.push({name:'항목'+(t.fields.length+1),type:'label',label:''});renderTplEditor();const ins=$$('#tRows input[data-k=name]');ins[ins.length-1]?.select()};
+  $('#tTest').onclick=async()=>{
+    if(!S.doc||!S.doc.pages.some(p=>p.result))return toast('인식된 문서를 먼저 열어 주세요',true);
+    const text=S.doc.pages.filter(p=>p.result).map(p=>p.result.text).join('\n');
+    $('#tTest').disabled=true;
+    try{const r=await api('/api/extract',{json:{text,fields:T.edit[T.editIdx].fields,model:S.set.llm||null}});T.preview=r.values;renderTplEditor()}catch(e){toast(e.message,true)}finally{$('#tTest').disabled=false}
+  };
+  $('#tSave').onclick=async()=>{
+    try{const cur=T.edit[T.editIdx];const r=await api('/api/templates',{method:'PUT',json:T.edit});
+      const saved=r.templates.find(x=>x.name===cur.name&&(!cur.id||x.id===cur.id))||r.templates[0];
+      S.set.tpl=saved?.id||'';saveSet();await loadTemplates();$('#mTpl').classList.remove('on');toast('템플릿을 저장했습니다');if(S.doc?.fields&&!S.doc.fields.edited)ensureFields(true);else renderFields()}
+    catch(e){toast(e.message,true)}
+  };
+}
+
+/* ---------- 항목 탭 (문서별 입력값) ---------- */
+S.copied=new Set();S.token=null;S.tab='text';
+async function ensureFields(force){
+  const d=S.doc;
+  if(!d||!d.pages.some(p=>p.result)||!S.set.tpl)return renderFields();
+  const f=d.fields;
+  if(!force&&f&&(f.edited||f.template_id===S.set.tpl))return renderFields();
+  $('#fList').innerHTML=`<div class="placeholder">${ic('loader','spin')}<br>항목을 채우는 중…</div>`;
+  try{d.fields=await api(`/api/docs/${d.id}/autofill`,{json:{template_id:S.set.tpl,model:S.set.llm||null}});S.copied=new Set();loadDocs()}
+  catch(e){toast(e.message,true)}
+  renderFields();
+}
+const saveFields=debounce(async()=>{const d=S.doc;if(!d?.fields)return;try{await api(`/api/docs/${d.id}/fields`,{method:'PUT',json:{template_id:d.fields.template_id,values:d.fields.values,checked:!!d.fields.checked,edited:true}});d.fields.edited=true}catch(e){toast('저장 실패: '+e.message,true)}},500);
+function autosize(t){t.style.height='auto';t.style.height=Math.min(200,t.scrollHeight)+'px'}
+function renderFields(){
+  const d=S.doc,list=$('#fList'),f=d?.fields;
+  const tpl=T.list.find(t=>t.id===S.set.tpl);
+  $('#fChecked').checked=!!f?.checked;
+  ['fCopyAll','fCopyRow','fNext','fDoneNext','fRefill'].forEach(id=>$('#'+id).disabled=!f?.values?.length&&id!=='fRefill');
+  if(!d){$('#fStat').textContent='';list.innerHTML='<div class="placeholder">문서를 추가하세요.</div>';return}
+  if(!d.pages.some(p=>p.result)){$('#fStat').textContent='';list.innerHTML=`<div class="placeholder">${ic('scan')}<br>먼저 문서를 인식하세요.<br><span class="muted">인식이 끝나면 선택한 템플릿 항목이 자동으로 채워집니다.</span></div>`;return}
+  if(!tpl){list.innerHTML='<div class="placeholder">항목 템플릿을 고르거나 <b>항목 편집</b>에서 만드세요.</div>';return}
+  if(!f){list.innerHTML=`<div class="placeholder"><button class="btn primary" id="fFillNow">${ic('play')}항목 채우기</button></div>`;$('#fFillNow').onclick=()=>ensureFields(true);$('#fStat').textContent='';return}
+  const vals=f.values,found=vals.filter(v=>v.value).length;
+  const other=f.template_id!==S.set.tpl?T.list.find(t=>t.id===f.template_id):null;
+  $('#fStat').innerHTML=`<span>${found}/${vals.length}개 채움</span>·<span>${f.edited?'직접 수정함':'자동 채움'}</span>·<span>복사 ${S.copied.size}/${vals.length}</span>${other||f.template_id!==S.set.tpl?`<span class="fb miss">다른 템플릿(${esc(other?.name||'삭제됨')}) 값</span><button class="btn sm" id="fSwitch">이 템플릿으로 채우기</button>`:''}`;
+  $('#fSwitch')?.addEventListener('click',()=>{if(!f.edited||confirm('직접 고친 값이 사라집니다. 다시 채울까요?'))ensureFields(true)});
+  list.innerHTML=vals.map((v,i)=>{
+    const badge=v.note==='ai'?'<span class="fb ai">AI</span>':(!v.value?'<span class="fb miss">못 찾음</span>':'');
+    return `<div class="fc ${S.copied.has(i)?'copied':''} ${v.value?'':'empty'}" data-i="${i}"><div class="fh"><span class="fn">${esc(v.name)}</span>${badge}${S.copied.has(i)?'<span class="fb ok">복사됨</span>':''}<span class="sp"></span><button class="btn icon sm ghost" data-cp="${i}" title="이 항목 복사">${ic('copy')}</button></div><textarea class="fv" rows="1" data-v="${i}" spellcheck="false" placeholder="못 찾았습니다 — 직접 입력하거나 문서를 보고 채우세요">${esc(v.value)}</textarea></div>`}).join('');
+  $$('#fList .fv').forEach(t=>{autosize(t);t.oninput=()=>{vals[+t.dataset.v].value=t.value;autosize(t);t.closest('.fc').classList.toggle('empty',!t.value);saveFields()}});
+  $$('[data-cp]').forEach(b=>b.onclick=()=>copyField(+b.dataset.cp));
+}
+function copyText(t,msg){return navigator.clipboard.writeText(t).then(()=>toast(msg),()=>toast('복사 실패 — 브라우저 권한을 확인하세요',true))}
+function copyField(i){
+  const v=S.doc.fields.values[i];copyText(v.value,`'${v.name}' 복사됨 — 시스템 칸에 Ctrl+V`);S.copied.add(i);renderFields();
+  const el=$(`.fc[data-i="${i}"]`);el?.scrollIntoView({block:'nearest',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),700);
+}
+function copyNext(){const vals=S.doc?.fields?.values;if(!vals)return;const i=vals.findIndex((_,k)=>!S.copied.has(k));if(i<0){toast('모든 항목을 복사했습니다. 처음부터 다시 하려면 한 번 더 누르세요');S.copied=new Set();renderFields();return}copyField(i)}
+async function doneNext(){
+  const d=S.doc;if(!d?.fields)return;d.fields.checked=true;
+  await api(`/api/docs/${d.id}/fields`,{method:'PUT',json:{template_id:d.fields.template_id,values:d.fields.values,checked:true,edited:!!d.fields.edited}});
+  await loadDocs();const i=S.docs.findIndex(x=>x.id===d.id);const nx=S.docs.slice(i+1).find(x=>!x.checked)||S.docs.slice(i+1)[0];
+  if(nx){await openDoc(nx.id);toast('다음 문서를 열었습니다')}else{renderFields();toast('마지막 문서입니다')}
+}
+async function getToken(){if(S.token)return S.token;try{S.token=(await api('/api/helper/token')).token}catch(e){}return S.token}
+async function syncSelect(){const t=await getToken();if(t&&S.doc)api('/api/helper/select?t='+t,{json:{doc_id:S.doc.id}}).catch(()=>{})}
+async function pollHelper(){
+  try{const t=await getToken();if(t&&!S.running){const r=await api('/api/helper/current?t='+t);
+    if(r.doc&&S.doc&&r.doc.id!==S.doc.id&&S.docs.some(x=>x.id===r.doc.id)){await openDoc(r.doc.id,0,true)}
+    else if(r.doc&&S.doc&&S.doc.fields&&!!r.checked!==!!S.doc.fields.checked){S.doc.fields.checked=r.checked;renderFields();loadDocs()}}}catch(e){}
+  setTimeout(pollHelper,2500);
+}
+async function openHelperModal(){
+  const t=await getToken();if(!t)return toast('도우미 키를 가져오지 못했습니다',true);
+  const src=(await (await fetch('/helper.js')).text()).replace(/__API__/g,location.origin).replace(/__TOKEN__/g,t);
+  const url='javascript:'+encodeURIComponent(src);
+  $('#bmLink').href=url;$('#bmLink').onclick=e=>{e.preventDefault();toast('클릭하지 말고 북마크바로 끌어다 놓으세요')};
+  $('#bmCopy').onclick=()=>copyText(url,'도우미 주소를 복사했습니다. 북마크 URL 칸에 붙여넣으세요');
+  $('#hlCopy').onclick=()=>{if(!S.doc?.fields)return toast('항목이 채워진 문서를 먼저 여세요',true);copyText(JSON.stringify({doc:{name:S.doc.name},fields:S.doc.fields.values.map(v=>({name:v.name,value:v.value}))}),'도우미용으로 복사했습니다. 도우미 창에 붙여넣으세요')};
+  $('#mHelper').classList.add('on');
+}
+function bindFields(){
+  $('#fTpl').onchange=e=>{S.set.tpl=e.target.value;$('#tplSel').value=S.set.tpl;saveSet();renderTplDesc();
+    if(S.doc?.fields?.edited&&S.doc.fields.template_id!==S.set.tpl){renderFields();return}ensureFields(true)};
+  $('#fRefill').onclick=()=>{if(S.doc?.fields?.edited&&!confirm('직접 고친 값이 사라집니다. 문서에서 다시 채울까요?'))return;ensureFields(true)};
+  $('#fEdit').onclick=openTplEditor;
+  $('#fCopyAll').onclick=()=>{const v=S.doc.fields.values;copyText(v.map(x=>`${x.name}: ${x.value}`).join('\n'),'전체 항목을 복사했습니다')};
+  $('#fCopyRow').onclick=()=>{const v=S.doc.fields.values;copyText(v.map(x=>(x.value||'').replace(/[\t\r\n]+/g,' ')).join('\t'),'엑셀 한 줄로 복사했습니다. 엑셀 행 첫 칸에 붙여넣으세요')};
+  $('#fNext').onclick=copyNext;
+  $('#fChecked').onchange=e=>{if(!S.doc?.fields)return;S.doc.fields.checked=e.target.checked;api(`/api/docs/${S.doc.id}/fields`,{method:'PUT',json:{template_id:S.doc.fields.template_id,values:S.doc.fields.values,checked:e.target.checked,edited:!!S.doc.fields.edited}}).then(()=>loadDocs())};
+  $('#fDoneNext').onclick=doneNext;
+  $('#fHelper').onclick=openHelperModal;
+  addEventListener('keydown',e=>{if(e.altKey&&(e.key==='c'||e.key==='C'||e.code==='KeyC')&&S.tab==='fields'){e.preventDefault();copyNext()}});
+}
+
+/* ---------- 내보내기 ---------- */
+const FMTS=[['txt','TXT','메모장·어디서나','#475467'],['docx','Word','문서 편집용','#2b579a'],['xlsx','Excel','줄별·항목 표','#217346'],['pdf','검색 PDF','원본 모양 + 검색','#d92d20'],['md','Markdown','노션·깃허브','#101828'],['json','JSON','좌표 포함 데이터','#9b51e0']];
+function renderExport(){
+  $('#fmts').innerHTML=FMTS.map(([k,n,d,c])=>`<button class="fmt" data-f="${k}"><span class="ext" style="background:${c}">.${k}</span><b>${n}</b><small>${d}</small></button>`).join('');
+  $$('#fmts .fmt').forEach(b=>b.onclick=()=>doExport(b.dataset.f,b));
+}
+function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+async function doExport(fmt,btn){
+  if(!S.doc)return toast('문서를 먼저 추가하세요',true);
+  const pages=S.expScope==='page'?[S.page]:null;
+  btn.disabled=true;
+  try{
+    const r=await api(`/api/docs/${S.doc.id}/export`,{json:{format:fmt,pages,template_id:S.set.tpl||null,model:S.set.llm||null},raw:true});
+    const blob=await r.blob();const cd=r.headers.get('content-disposition')||'';const m=cd.match(/filename\*=UTF-8''([^;]+)/);
+    dl(blob,m?decodeURIComponent(m[1]):'export.'+fmt);toast('저장했습니다');
+  }catch(e){toast(e.message,true)}finally{btn.disabled=false}
+}
+
+/* ---------- 일괄 처리 ---------- */
+let bTimer=null;const bF=new Set(store.get('batchFmts',['txt','pdf']));
+function openBatch(){
+  $('#bIn').value=store.get('bIn','');$('#bOut').value=store.get('bOut','');
+  $('#bFmts').innerHTML=FMTS.map(([k,n])=>`<button class="chip ${bF.has(k)?'on':''}" data-bf="${k}">${n}</button>`).join('');
+  $$('[data-bf]').forEach(c=>c.onclick=()=>{bF.has(c.dataset.bf)?bF.delete(c.dataset.bf):bF.add(c.dataset.bf);c.classList.toggle('on');store.set('batchFmts',[...bF])});
+  const eng={tesseract:'빠름(Tesseract)',paddle:'정확(PaddleOCR)',ollama:'AI('+S.set.vlm+')'}[S.set.engine];
+  $('#bEngNote').innerHTML=`엔진·언어·전처리는 오른쪽 패널의 현재 설정(<b>${esc(eng)}</b>)을 따릅니다. 이미 텍스트가 있는 PDF는 OCR 없이 바로 추출합니다. 끝나면 출력 폴더에 <b>처리보고서(CSV)</b>가 생기고, 내 항목 템플릿을 고르면 <b>항목추출 엑셀</b>(파일당 한 줄)도 만들어집니다.`;
+  $('#mBatch').classList.add('on');pollBatch();
+}
+async function pollBatch(){
+  clearTimeout(bTimer);
+  let s;try{s=await api('/api/batch/status')}catch(e){return}
+  const show=s.running||s.log.length;$('#bRun').hidden=!show;
+  $('#bStart').hidden=s.running;$('#bStop').hidden=!s.running;
+  $('#bStat').textContent=s.running?`처리 중 ${s.done} / ${s.total}`:(s.total?`완료 ${s.done} / ${s.total}${s.errors?` · 오류 ${s.errors}`:''}`:'');
+  $('#bCur').textContent=s.current||'';
+  $('#bBar').style.width=(s.total?s.done/s.total*100:0)+'%';
+  const lg=$('#bLog');const atEnd=lg.scrollTop+lg.clientHeight>=lg.scrollHeight-4;lg.textContent=s.log.join('\n');if(atEnd)lg.scrollTop=lg.scrollHeight;
+  if(s.running&&$('#mBatch').classList.contains('on'))bTimer=setTimeout(pollBatch,1000);
+}
+
+/* ---------- 업로드 ---------- */
+async function upload(files){
+  files=[...files].filter(f=>/\.(png|jpe?g|tiff?|bmp|webp|gif|pdf)$/i.test(f.name));
+  if(!files.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);
+  const fd=new FormData();files.forEach(f=>fd.append('files',f));
+  const t=document.createElement('div');t.className='toast';t.innerHTML=ic('loader','spin')+`<span>${files.length}개 파일을 불러오는 중…</span>`;$('#toasts').append(t);
+  try{const docs=await api('/api/upload',{method:'POST',body:fd});await loadDocs(docs[0]?.id);toast(`${docs.length}개 문서를 추가했습니다`)}
+  catch(e){toast(e.message,true)}finally{t.remove()}
+}
+
+/* ---------- 이벤트 ---------- */
+function renderAll(){renderThumbs();renderViewer();renderText();renderRefine();setRunning(S.running)}
+function bind(){
+  paintIcons();
+  $('#drop').onclick=()=>$('#file').click();
+  $('#file').onchange=e=>{upload(e.target.files);e.target.value=''};
+  let dc=0;
+  addEventListener('dragenter',e=>{if(e.dataTransfer?.types?.includes('Files')){dc++;$('#dropAll').classList.add('on')}});
+  addEventListener('dragleave',()=>{if(--dc<=0){dc=0;$('#dropAll').classList.remove('on')}});
+  addEventListener('dragover',e=>e.preventDefault());
+  addEventListener('drop',e=>{e.preventDefault();dc=0;$('#dropAll').classList.remove('on');if(e.dataTransfer.files.length)upload(e.dataTransfer.files)});
+  $('#pPrev').onclick=()=>gotoPage(S.page-1);$('#pNext').onclick=()=>gotoPage(S.page+1);
+  $('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=()=>{S.zoom=null;applyZoom()};
+  $('#viewer').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1)}},{passive:false});
+  // 드래그로 이동
+  let pan=null;$('#viewer').addEventListener('mousedown',e=>{if(e.target.closest('rect'))return;pan={x:e.clientX,y:e.clientY,l:$('#viewer').scrollLeft,t:$('#viewer').scrollTop};$('#viewer').style.cursor='grabbing'});
+  addEventListener('mousemove',e=>{if(!pan)return;$('#viewer').scrollLeft=pan.l-(e.clientX-pan.x);$('#viewer').scrollTop=pan.t-(e.clientY-pan.y)});
+  addEventListener('mouseup',()=>{pan=null;$('#viewer').style.cursor=''});
+  addEventListener('resize',()=>{if(S.zoom==null)applyZoom()});
+  $$('#viewSeg button').forEach(b=>b.onclick=()=>{if(b.disabled)return;S.view=b.dataset.v;renderViewer()});
+  $('#boxToggle').onclick=()=>{S.boxes=!S.boxes;$('#boxToggle').classList.toggle('on',S.boxes);renderViewer()};
+  $$('#engSel button').forEach(b=>b.onclick=()=>{S.set.engine=b.dataset.e;saveSet();renderSettings()});
+  $('#vlmSel').onchange=e=>{S.set.vlm=e.target.value;saveSet()};
+  $('#llmSel').onchange=e=>{S.set.llm=e.target.value;saveSet()};
+  $('#langSel').onchange=e=>{S.set.lang=e.target.value;saveSet()};
+  $('#psmSel').onchange=e=>{S.set.psm=e.target.value;saveSet()};
+  $$('#preChips .chip').forEach(c=>c.onclick=()=>{S.set.pre[c.dataset.k]=!S.set.pre[c.dataset.k];saveSet();renderSettings()});
+  $('#runPage').onclick=()=>runOcr([S.page]);
+  $('#runAll').onclick=()=>runOcr(S.doc.pages.map((_,i)=>i).filter(i=>!S.doc.pages[i].result||S.doc.pages[i].result.engine!=='pdf-text'));
+  $('#runStop').onclick=()=>{S.stop=true;toast('현재 페이지까지만 처리하고 멈춥니다')};
+  $$('#tabs button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;$$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.t));if(S.tab==='fields')ensureFields()});
+  $$('#scopeSeg button').forEach(b=>b.onclick=()=>{S.scope=b.dataset.s;$$('#scopeSeg button').forEach(x=>x.classList.toggle('on',x===b))});
+  $$('#expSeg button').forEach(b=>b.onclick=()=>{S.expScope=b.dataset.s;$$('#expSeg button').forEach(x=>x.classList.toggle('on',x===b))});
+  $$('.tool[data-r]').forEach(b=>b.onclick=()=>runRefine('rule',b.dataset.r));
+  $$('.tool[data-a]').forEach(b=>b.onclick=()=>runRefine('ai',b.dataset.a));
+  $('#aiCustomGo').onclick=()=>{const c=$('#aiCustom').value.trim();if(!c)return toast('지시 내용을 입력하세요',true);runRefine('ai','custom',{custom:c})};
+  $('#frGo').onclick=()=>{const f=$('#frFind').value;if(!f)return toast('찾을 말을 입력하세요',true);runRefine('rule','replace',{find:f,rep:$('#frRep').value,regex:$('#frRegex').checked})};
+  $('#btnBatch').onclick=openBatch;$('#btnHelp').onclick=openHelp;
+  $('#helpRefresh').onclick=async()=>{await loadEngines();openHelp();toast('엔진 상태를 다시 확인했습니다')};
+  $$('[data-close]').forEach(b=>b.onclick=()=>b.closest('.modal').classList.remove('on'));
+  $$('.modal').forEach(m=>m.onclick=e=>{if(e.target===m)m.classList.remove('on')});
+  $$('[data-pick]').forEach(b=>b.onclick=async()=>{const r=await api('/api/pick-folder',{method:'POST'});if(r.path)$('#'+b.dataset.pick).value=r.path;else if(r.error)toast(r.error,true)});
+  $('#bStart').onclick=async()=>{
+    const inp=$('#bIn').value.trim(),out=$('#bOut').value.trim();store.set('bIn',inp);store.set('bOut',out);
+    if(!inp||!out)return toast('입력·출력 폴더를 지정하세요',true);
+    try{await api('/api/batch/start',{json:{input_dir:inp,output_dir:out,engine:S.set.engine,lang:S.set.lang,psm:+S.set.psm,model:S.set.vlm||null,pre:S.set.pre,fix_spacing:!!S.set.pre.fixSpacing,formats:[...bF],recursive:$('#bRec').checked,clean:$('#bClean').checked,mask:$('#bMask').checked,skip_existing:$('#bSkip').checked,template_id:$('#bTpl').value||null,llm:S.set.llm||null}});pollBatch()}
+    catch(e){toast(e.message,true)}
+  };
+  $('#bStop').onclick=()=>api('/api/batch/stop',{method:'POST'});
+  const theme=store.get('theme','light');document.documentElement.dataset.theme=theme;
+  const setThemeIcon=()=>{const b=$('#btnTheme');b.innerHTML=ic(document.documentElement.dataset.theme==='dark'?'sun':'moon')};setThemeIcon();
+  $('#btnTheme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;store.set('theme',t);setThemeIcon()};
+  addEventListener('keydown',e=>{
+    const typing=e.target.closest('input,textarea,select,[contenteditable]');
+    if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();runOcr([S.page]);return}
+    if(typing)return;
+    if(e.key==='ArrowRight'||e.key==='PageDown')gotoPage(S.page+1);
+    if(e.key==='ArrowLeft'||e.key==='PageUp')gotoPage(S.page-1);
+    if(e.key==='Escape')$$('.modal').forEach(m=>m.classList.remove('on'));
+  });
+}
+bind();bindTpl();bindFields();loadTemplates().then(renderFields);setTimeout(pollHelper,2500);renderExport();renderSettings();renderAll();loadEngines();loadDocs().then(()=>{if(S.docs[0])openDoc(S.docs[0].id)});
+</script>
+</body>
+</html>
