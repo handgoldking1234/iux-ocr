@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import threading
 import time
 import traceback
@@ -21,7 +22,11 @@ from pydantic import BaseModel
 from . import engines, exporters, extract, preprocess, refine
 
 ROOT = Path(__file__).resolve().parent.parent
-WS = Path(os.environ.get("IUX_OCR_WORKSPACE", ROOT / "workspace"))
+if getattr(sys, "frozen", False):  # 설치형(exe): 프로그램 폴더는 쓰기 불가 → 사용자 폴더에 저장
+    _default_ws = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "IUX OCR" / "workspace"
+else:
+    _default_ws = ROOT / "workspace"
+WS = Path(os.environ.get("IUX_OCR_WORKSPACE", _default_ws))
 DOCS = WS / "docs"
 DOCS.mkdir(parents=True, exist_ok=True)
 STATIC = ROOT / "app" / "static"

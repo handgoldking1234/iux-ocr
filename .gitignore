@@ -8,3 +8,7 @@ __pycache__/
 wheels/
 bin/
 tessdata/
+# 빌드 결과
+build/
+dist/
+build_extra/

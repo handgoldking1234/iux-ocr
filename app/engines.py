@@ -35,6 +35,7 @@ _tess_dir: str | None = None
 def _find_tesseract() -> str | None:
     cands = [
         os.environ.get("TESSERACT_CMD"),
+        str(Path(sys.executable).parent / "bin" / "tesseract" / "tesseract.exe"),  # 설치형(exe) 동봉 위치
         str(ROOT / "bin" / "tesseract" / "tesseract.exe"),   # 포터블 동봉 위치
         str(ROOT / "bin" / "tesseract" / "tesseract"),
         shutil.which("tesseract"),
@@ -64,6 +65,10 @@ def tesseract_info() -> dict:
     _tess_cmd = cmd
     # 프로그램 폴더의 tessdata(예: kor 고정밀 모델)를 우선 사용
     local = ROOT / "tessdata"
+    if not (local / "kor.traineddata").exists():
+        exe_td = Path(sys.executable).parent / "tessdata"
+        if (exe_td / "kor.traineddata").exists():
+            local = exe_td
     _tess_dir = str(local) if (local / "kor.traineddata").exists() else None
     try:
         langs = pytesseract.get_languages(config=_tess_cfg(""))

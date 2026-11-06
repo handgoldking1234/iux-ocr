@@ -46,6 +46,7 @@ header{display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--
 /* buttons */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-weight:600;font-size:12.5px;white-space:nowrap;transition:.12s}
 .btn:hover{border-color:var(--line-2);background:var(--panel-2)}
+a.btn{text-decoration:none;color:inherit}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.primary:hover{filter:brightness(1.07)}
 .btn.ghost{border-color:transparent;background:transparent}
@@ -585,6 +586,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const LOW=70;
 function toast(msg,err=false){const t=document.createElement('div');t.className='toast'+(err?' err':'');t.innerHTML=ic(err?'x':'check')+`<span>${esc(msg)}</span>`;$('#toasts').append(t);setTimeout(()=>t.remove(),err?6000:2600);}
 async function api(path,opt={}){
+  if(window.WEB_API){try{return await window.WEB_API(path,opt)}catch(e){throw e instanceof Error?e:new Error(String(e))}}
   const o={...opt};delete o.raw;
   if(o.json!==undefined){o.method=o.method||'POST';o.headers={'Content-Type':'application/json'};o.body=JSON.stringify(o.json);delete o.json;}
   const r=await fetch(path,o);
@@ -593,6 +595,7 @@ async function api(path,opt={}){
   const ct=r.headers.get('content-type')||'';
   return ct.includes('application/json')?r.json():r;
 }
+function fileUrl(id,kind,i,t){return window.WEB_FILEURL?window.WEB_FILEURL(id,kind,i):`/api/docs/${id}/file/${kind}/${i}${t!=null?'?t='+t:''}`}
 const store={get(k,d){try{const v=localStorage.getItem('iuxocr.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem('iuxocr.'+k,JSON.stringify(v))}catch(e){}}};
 function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}}
 function linesToText(lines){const out=[];let prev=null;for(const l of lines){if(prev!==null&&l.block!==prev)out.push('');out.push(l.text);prev=l.block;}return out.join('\n');}
@@ -687,7 +690,7 @@ function renderThumbs(){
   $('#thumbs').innerHTML=S.doc.pages.map((p,i)=>{
     const r=p.result;let st='';
     if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':'AI')}</span>`}
-    return `<div class="th ${i===S.page?'on':''}" data-i="${i}"><img loading="lazy" src="/api/docs/${S.doc.id}/file/thumb/${i}"><span class="no">${i+1}</span>${st}</div>`}).join('');
+    return `<div class="th ${i===S.page?'on':''}" data-i="${i}"><img loading="lazy" src="${fileUrl(S.doc.id,'thumb',i)}"><span class="no">${i+1}</span>${st}</div>`}).join('');
   $$('#thumbs .th').forEach(el=>el.onclick=()=>gotoPage(+el.dataset.i));
 }
 function setThumbRunning(i){const el=$(`#thumbs .th[data-i="${i}"]`);if(!el)return;el.querySelector('.st')?.remove();el.insertAdjacentHTML('beforeend','<span class="st run">…</span>')}
@@ -705,7 +708,7 @@ function renderViewer(){
   if(!p)return;
   const kind=S.view==='proc'&&hasProc?'proc':'image';
   const img=$('#pimg');
-  const src=`/api/docs/${S.doc.id}/file/${kind}/${S.page}?t=${p.result?.at||0}`;
+  const src=fileUrl(S.doc.id,kind,S.page,p.result?.at||0);
   if(img.dataset.src!==src){img.dataset.src=src;img.onload=()=>{img.dataset.w=img.naturalWidth;img.dataset.h=img.naturalHeight;applyZoom()};img.src=src}else applyZoom();
   const pre=p.result?.pre;
   if(kind==='image'&&pre&&(pre.skew||pre.rotate)&&S.boxes&&p.result.lines?.some(l=>l.box))
@@ -1026,7 +1029,7 @@ async function pollHelper(){
 }
 async function openHelperModal(){
   const t=await getToken();if(!t)return toast('도우미 키를 가져오지 못했습니다',true);
-  const src=(await (await fetch('/helper.js')).text()).replace(/__API__/g,location.origin).replace(/__TOKEN__/g,t);
+  const src=(await (await fetch(window.WEB?'app/static/helper.js':'/helper.js')).text()).replace(/__API__/g,window.WEB?'http://127.0.0.1:9':location.origin).replace(/__TOKEN__/g,t);
   const url='javascript:'+encodeURIComponent(src);
   $('#bmLink').href=url;$('#bmLink').onclick=e=>{e.preventDefault();toast('클릭하지 말고 북마크바로 끌어다 놓으세요')};
   $('#bmCopy').onclick=()=>copyText(url,'도우미 주소를 복사했습니다. 북마크 URL 칸에 붙여넣으세요');
@@ -1097,6 +1100,19 @@ async function upload(files){
   catch(e){toast(e.message,true)}finally{t.remove()}
 }
 
+/* ---------- 웹버전 ---------- */
+function applyWebMode(){
+  document.title='IUX OCR 웹 · 브라우저 문서 인식';
+  $('.brand span').textContent='웹 · 설치 없이';
+  $('#btnBatch').hidden=true;
+  $$('#langSel option').forEach(o=>{if(!['kor+eng','kor','eng'].includes(o.value))o.remove()});
+  const i=FMTS.findIndex(f=>f[0]==='pdf');if(i>=0)FMTS.splice(i,1);
+  const d=FMTS.find(f=>f[0]==='docx');if(d){d[1]='Word';d[2]='.doc (Word에서 열림)'}
+  $$('#mHelper a[href="/helper-demo"]').forEach(a=>a.parentElement.hidden=true);
+  $('#welcome p').innerHTML='설치 없이 이 브라우저 안에서 인식합니다. 문서는 서버로 올라가지 않고 이 PC 브라우저에만 저장됩니다.<br>왼쪽에 스캔 이미지나 PDF를 끌어다 놓으세요. <span class="muted">(첫 인식 때 한국어 모델 약 5MB를 내려받습니다)</span>';
+  $('.hbtns').insertAdjacentHTML('afterbegin','<a class="btn" href="https://github.com/handgoldking1234/iux-ocr/releases/latest" target="_blank" rel="noopener" title="정확 모드·AI·폴더 일괄 처리·검색 PDF">'+ic('download')+'PC 버전 받기</a>');
+}
+
 /* ---------- 이벤트 ---------- */
 function renderAll(){renderThumbs();renderViewer();renderText();renderRefine();setRunning(S.running)}
 function bind(){
@@ -1158,6 +1174,7 @@ function bind(){
     if(e.key==='Escape')$$('.modal').forEach(m=>m.classList.remove('on'));
   });
 }
+if(window.WEB)applyWebMode();
 bind();bindTpl();bindFields();loadTemplates().then(renderFields);setTimeout(pollHelper,2500);renderExport();renderSettings();renderAll();loadEngines();loadDocs().then(()=>{if(S.docs[0])openDoc(S.docs[0].id)});
 </script>
 </body>
