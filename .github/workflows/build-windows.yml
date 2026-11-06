@@ -55,7 +55,11 @@ jobs:
       - name: 실행 확인 (서버 기동 + 샘플 인식)
         shell: pwsh
         run: |
-          $env:IUX_OCR_WORKSPACE = "$env:RUNNER_TEMP\iuxws"
+          # 한글 사용자 이름 PC 재현: 임시 폴더·작업 폴더 경로에 한글
+          $ko = "$env:RUNNER_TEMP\사용자한글"
+          New-Item -ItemType Directory -Force -Path $ko | Out-Null
+          $env:TEMP = $ko; $env:TMP = $ko
+          $env:IUX_OCR_WORKSPACE = "$ko\작업공간"
           $p = Start-Process -FilePath "dist\IUX OCR\IUX OCR.exe" -ArgumentList "--no-browser","--port","8799" -PassThru
           $ok = $false
           for ($i = 0; $i -lt 40; $i++) { Start-Sleep 2; try { $r = Invoke-RestMethod http://127.0.0.1:8799/api/engines; $ok = $true; break } catch {} }

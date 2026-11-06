@@ -33,6 +33,9 @@ STATIC = ROOT / "app" / "static"
 IMG_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".gif"}
 PDF_DPI = 300
 
+import tempfile as _tf  # noqa: E402
+_tf.tempdir = engines._ascii_tmp_root() or _tf.tempdir  # 한글 사용자 폴더 대응 (OpenCV·Tesseract)
+
 app = FastAPI(title="IUX OCR")
 _tok = WS / "helper_token.txt"
 if not _tok.exists():

@@ -98,9 +98,15 @@ def run_tesseract(gray: np.ndarray, lang: str = "kor+eng", psm: int = 4, fix_spa
     try:  # 한 번의 인식으로 TSV(좌표)와 TXT(띄어쓰기 정확)를 함께 받는다
         txt_out, tsv_out = _tess_txt_tsv(gray, lang, psm)
         d = _parse_tsv(tsv_out)
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        print("[IUX OCR] Tesseract 직접 실행 실패, pytesseract로 재시도:", e)
         txt_out = None
-        d = pytesseract.image_to_data(gray, lang=lang, config=cfg, output_type=pytesseract.Output.DICT)
+        try:
+            import tempfile
+            tempfile.tempdir = _ascii_tmp_root() or tempfile.tempdir
+            d = pytesseract.image_to_data(gray, lang=lang, config=cfg, output_type=pytesseract.Output.DICT)
+        except Exception as e2:  # noqa: BLE001
+            raise RuntimeError(f"{e} / {e2}") from e2
     groups: dict[tuple, dict] = {}
     order: list[tuple] = []
     for i, word in enumerate(d["text"]):
@@ -152,19 +158,49 @@ def run_tesseract(gray: np.ndarray, lang: str = "kor+eng", psm: int = 4, fix_spa
     return _finish("tesseract", lines)
 
 
+def _ascii_tmp_root() -> str | None:
+    """윈도우 사용자 이름이 한글이면 임시 폴더 경로에 한글이 들어가
+    OpenCV·Tesseract가 파일을 못 읽는다 → 영문 경로의 임시 폴더를 고른다."""
+    import tempfile
+    cands = [tempfile.gettempdir()]
+    if os.name == "nt":
+        cands += [os.path.join(os.environ.get("PUBLIC", r"C:\Users\Public"), "IUXOCR_tmp"),
+                  os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"), "IUXOCR", "tmp"),
+                  r"C:\IUXOCR_tmp"]
+    for c in cands:
+        if not c or not c.isascii():
+            continue
+        try:
+            os.makedirs(c, exist_ok=True)
+            probe = os.path.join(c, f".w{os.getpid()}")
+            with open(probe, "w") as f:
+                f.write("1")
+            os.remove(probe)
+            return c
+        except OSError:
+            continue
+    return None
+
+
 def _tess_txt_tsv(gray: np.ndarray, lang: str, psm: int) -> tuple[str, str]:
     import subprocess
     import tempfile
-    with tempfile.TemporaryDirectory() as td:
+    with tempfile.TemporaryDirectory(dir=_ascii_tmp_root()) as td:
         src = os.path.join(td, "in.png")
-        cv2.imwrite(src, gray)
+        ok, buf = cv2.imencode(".png", gray)
+        if not ok:
+            raise RuntimeError("이미지 변환 실패")
+        buf.tofile(src)  # 한글 경로에서도 안전
         base = os.path.join(td, "out")
         cmd = [_tess_cmd, src, base, "-l", lang, "--oem", "1", "--psm", str(psm), "-c", "preserve_interword_spaces=1"]
         if _tess_dir:
             cmd[3:3] = ["--tessdata-dir", _tess_dir]
         cmd += ["txt", "tsv"]
         flags = 0x08000000 if os.name == "nt" else 0  # 윈도우에서 콘솔 창 숨김
-        subprocess.run(cmd, check=True, capture_output=True, creationflags=flags, timeout=600)
+        pr = subprocess.run(cmd, capture_output=True, creationflags=flags, timeout=600)
+        if pr.returncode != 0 or not os.path.exists(base + ".tsv"):
+            err = (pr.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            raise RuntimeError("Tesseract 실행 오류: " + (err[-1] if err else f"코드 {pr.returncode}"))
         with open(base + ".txt", encoding="utf-8") as f:
             txt = f.read()
         with open(base + ".tsv", encoding="utf-8") as f:
