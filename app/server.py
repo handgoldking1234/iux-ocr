@@ -273,16 +273,48 @@ def api_docs():
     return sorted(out, key=lambda x: -x["created"])
 
 
+def _decode_filename(name: str) -> str:
+    """일부 프로그램이 보내는 '=?utf-8?B?...?=' 형식 파일명 복원."""
+    if "=?" in name:
+        try:
+            from email.header import decode_header, make_header
+            return str(make_header(decode_header(name)))
+        except Exception:  # noqa: BLE001
+            pass
+    return name
+
+
+def _sniff_ext(path: Path) -> str | None:
+    head = path.read_bytes()[:16]
+    if head.startswith(b"%PDF"):
+        return ".pdf"
+    if head[:4] in (b"II*\x00", b"MM\x00*"):
+        return ".tif"
+    try:
+        from PIL import Image
+        fmt = (Image.open(path).format or "").lower()
+        return {"jpeg": ".jpg", "png": ".png", "bmp": ".bmp", "webp": ".webp", "gif": ".gif", "tiff": ".tif"}.get(fmt)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 @app.post("/api/upload")
 async def api_upload(files: list[UploadFile] = File(...)):
     tmp = WS / "tmp"
     tmp.mkdir(exist_ok=True)
     docs = []
     for f in files:
-        name = Path(f.filename or "file").name
+        name = _decode_filename(Path(f.filename or "file").name)
         t = tmp / f"{uuid.uuid4().hex}{Path(name).suffix.lower()}"
         with open(t, "wb") as fo:
             shutil.copyfileobj(f.file, fo)
+        if t.suffix not in IMG_EXT and t.suffix != ".pdf":  # 확장자가 없거나 깨진 경우 내용으로 판별
+            ext = _sniff_ext(t)
+            if ext:
+                t2 = t.with_suffix(ext)
+                t.rename(t2)
+                t = t2
+                name = Path(name).stem + ext
         try:
             docs.append(ingest_file(t, name))
         finally:

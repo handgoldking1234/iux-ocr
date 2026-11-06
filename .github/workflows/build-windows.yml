@@ -62,7 +62,8 @@ jobs:
           if (-not $ok) { throw "서버가 뜨지 않습니다" }
           $r.tesseract | ConvertTo-Json
           if (-not $r.tesseract.has_kor) { throw "한국어 Tesseract를 찾지 못했습니다" }
-          $sample = Get-ChildItem samples\*.jpg | Select-Object -First 1
+          Copy-Item (Get-ChildItem samples\*.jpg | Select-Object -First 1).FullName "$env:RUNNER_TEMP\sample.jpg"
+          $sample = Get-Item "$env:RUNNER_TEMP\sample.jpg"
           $doc = Invoke-RestMethod -Uri http://127.0.0.1:8799/api/upload -Method Post -Form @{ files = $sample }
           $res = Invoke-RestMethod -Uri "http://127.0.0.1:8799/api/docs/$($doc[0].id)/ocr" -Method Post -ContentType "application/json" -Body '{"page":0}'
           "평균 신뢰도: $($res.result.mean_conf)"
