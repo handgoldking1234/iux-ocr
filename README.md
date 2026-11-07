@@ -11,7 +11,7 @@
 |---|---|---|
 | **설치형 (권장)** | [Releases](https://github.com/handgoldking1234/iux-ocr/releases/latest)에서 `IUX-OCR-Setup.exe` 받아 설치 | 전체 기능. 파이썬·Tesseract(한국어) 포함, 인터넷 없이 설치 가능 |
 | **포터블** | Releases의 `IUX-OCR-portable.zip` 압축 풀고 `IUX OCR.exe` 실행 | 설치형과 같음 (USB에 넣어 다님) |
-| **웹** | https://handgoldking1234.github.io/iux-ocr/ | 설치 없이 브라우저에서 빠름(Tesseract) 인식·항목·재가공·TXT/Word/Excel 저장. 문서는 서버로 전송되지 않고 그 브라우저에만 저장. 정확·AI 모드, 폴더 일괄 처리, 검색 PDF는 설치형 전용 |
+| **웹** | https://ocr.iux.kr | 설치 없이 브라우저에서 빠름(Tesseract) 인식·항목·재가공·TXT/Word/Excel 저장. 문서는 서버로 전송되지 않고 그 브라우저에만 저장. 정확·AI 모드, 폴더 일괄 처리, 검색 PDF는 설치형 전용 |
 
 - 설치형 exe는 `main`에 코드가 올라갈 때마다 GitHub Actions(윈도우)가 자동으로 빌드해 Releases에 올립니다.
 - 웹버전은 `python tools/build_web.py`로 `app/static/index.html`에서 루트 `index.html`을 만들어 GitHub Pages로 배포합니다.
