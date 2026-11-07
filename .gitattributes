@@ -3,3 +3,4 @@
 *.iss text eol=crlf
 *.gz binary
 *.wasm.js -diff
+*.ps1 text eol=crlf

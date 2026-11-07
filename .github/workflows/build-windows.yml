@@ -84,6 +84,10 @@ jobs:
           & $iscc @isccArgs install\iux-ocr.iss
           if ($LASTEXITCODE -ne 0) { throw "설치 파일 생성 실패" }
 
+      - name: 설치 파일 검증 (설치 → 실행 → 기능 점검 → 제거)
+        shell: pwsh
+        run: ./install/verify.ps1
+
       - name: 포터블 zip
         shell: pwsh
         run: Compress-Archive -Path "dist\IUX OCR\*" -DestinationPath "dist\IUX-OCR-portable.zip"
@@ -94,6 +98,7 @@ jobs:
           path: |
             dist/IUX-OCR-Setup.exe
             dist/IUX-OCR-portable.zip
+            dist/verify-report.json
 
       - name: 릴리스로 배포
         uses: softprops/action-gh-release@v2
