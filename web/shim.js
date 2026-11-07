@@ -104,7 +104,7 @@
     let name = '';
     const addPage = async (c, _i, extra = {}) => {
       const i = pages.length;
-      await setBlob(id, 'image', i, await toBlob(c));
+      await setBlob(id, 'image', i, await toBlob(c, 'image/jpeg', 0.92)); /* PNG보다 훨씬 작게 저장 */
       await setBlob(id, 'thumb', i, await thumbOf(c));
       pages.push({ index: i, file: 'image', proc: 'proc', thumb: 'thumb', width: c.width, height: c.height, dpi: extra.dpi || 300, result: extra.result || null, source: name, ...(extra.pdf_text ? { pdf_text: true } : {}) });
     };
@@ -222,7 +222,7 @@
     const t0 = performance.now(), p = doc.pages[idx];
     const src = await blobToCanvas(await getBlob(`${doc.id}/image/${idx}`));
     const { canvas: pc, info } = preprocess(src, req.pre || {});
-    await setBlob(doc.id, 'proc', idx, await toBlob(pc));
+    await setBlob(doc.id, 'proc', idx, await toBlob(pc, 'image/jpeg', 0.9));
     const lang = ['kor+eng', 'kor', 'eng'].includes(req.lang) ? req.lang : 'kor+eng';
     const w = await worker(lang);
     await w.setParameters({ tessedit_pageseg_mode: String(req.psm || 4), preserve_interword_spaces: '1' });
@@ -405,6 +405,11 @@
     if (p === '/api/extract') {
       if (body.fields) return { values: R.runTemplate(body.text, body.fields) };
       return { values: valuesFor(tplById(body.template_id) || fail('템플릿을 찾을 수 없습니다.'), body.text) };
+    }
+    if (p === '/api/storage') {
+      let est = {}; try { est = await navigator.storage.estimate(); } catch (e) {}
+      let persisted = false; try { persisted = await navigator.storage.persisted() || await navigator.storage.persist(); } catch (e) {}
+      return { usage: est.usage || 0, quota: est.quota || 0, persisted };
     }
     if (p === '/api/helper/token') return { token: 'web' };
     if (p.startsWith('/api/helper/')) return { doc: null, fields: [] };

@@ -479,6 +479,25 @@ table.fields td[contenteditable]{outline:none}
   </main>
 </div>
 
+<!-- PC 버전 받기 -->
+<div class="modal" id="mPc">
+  <div class="mbox" style="width:600px">
+    <div class="mh"><span data-ic="download"></span><h3>PC 설치형 내려받기 (Windows)</h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
+    <div class="mb guide">
+      <div class="choice">
+        <a class="btn primary" style="height:auto;padding:14px 16px;justify-content:flex-start;gap:12px;text-align:left" href="https://github.com/handgoldking1234/iux-ocr/releases/latest/download/IUX-OCR-Setup.exe"><svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg><span><b style="display:block;font-size:14px">설치 파일 (IUX-OCR-Setup.exe)</b><small style="opacity:.85;font-weight:500">약 110MB · 설치하면 바탕화면·시작 메뉴에 바로가기가 생깁니다</small></span></a>
+        <a class="btn" style="height:auto;padding:14px 16px;justify-content:flex-start;gap:12px;text-align:left" href="https://github.com/handgoldking1234/iux-ocr/releases/latest/download/IUX-OCR-portable.zip"><svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 6h1"/><path d="M10 10h1"/><path d="M10 14h1"/></svg><span><b style="display:block;font-size:14px">포터블 (IUX-OCR-portable.zip)</b><small style="color:var(--text-3);font-weight:500">약 155MB · 설치 없이 압축만 풀고 IUX OCR.exe 실행 · USB에 넣어 다니기</small></span></a>
+      </div>
+      <div class="box"><h5>웹 버전과 다른 점</h5>
+        <ol><li>문서·이미지를 <b>내 PC 폴더</b>에 저장 → 수 GB 단위 대량 작업에 알맞음</li>
+        <li><b>폴더 일괄 처리</b>(입력 폴더 → 결과 폴더), <b>검색 가능한 PDF</b>, 정확 모드(PaddleOCR)·AI(Ollama) 추가 가능</li>
+        <li>파이썬·Tesseract(한국어) 포함 → 인터넷 없는 PC에서도 설치·사용</li></ol></div>
+      <div class="muted" style="line-height:1.7">· 처음 실행할 때 Windows 보안 경고(SmartScreen)가 뜨면 <b>추가 정보 → 실행</b>을 누르세요. (서명 없는 프로그램이라 나오는 안내입니다)<br>· 실행하면 브라우저에 <code>http://127.0.0.1:8765</code> 화면이 열립니다. 검은 창을 닫으면 종료됩니다.<br>· 지난 버전·변경 내역: <a href="https://github.com/handgoldking1234/iux-ocr/releases/latest" target="_blank" rel="noopener">릴리스 페이지</a></div>
+    </div>
+    <div class="mf"><button class="btn" data-close>닫기</button></div>
+  </div>
+</div>
+
 <!-- 폴더 추가 방식 -->
 <div class="modal" id="mFolder">
   <div class="mbox" style="width:520px">
@@ -711,6 +730,7 @@ function openHelp(){
 async function loadDocs(selectId){
   S.docs=await api('/api/docs');
   $('#docCount').textContent=S.docs.length||'';
+  if(window.WEB)api('/api/storage').then(r=>{const mb=x=>x>1e9?(x/1e9).toFixed(1)+'GB':Math.round(x/1e6)+'MB';const el=$('#stoInfo');if(el)el.textContent=r.usage?`· ${mb(r.usage)} 사용`:'';if(el)el.title=`이 브라우저에 저장된 용량 ${mb(r.usage)} / 쓸 수 있는 최대 약 ${mb(r.quota)}`}).catch(()=>{});
   $('#docs').innerHTML=S.docs.length?S.docs.map(d=>`<div class="doc ${S.doc?.id===d.id?'on':''}" data-id="${d.id}">
      <div class="ico">${ic(/\.pdf$/i.test(d.name)?'file':'image')}</div>
      <div class="meta"><div class="nm" title="${esc(d.name)}">${esc(d.name)}</div>
@@ -1360,7 +1380,10 @@ function applyWebMode(){
   const d=FMTS.find(f=>f[0]==='docx');if(d){d[1]='Word';d[2]='.doc (Word에서 열림)'}
   $$('#mHelper a[href="/helper-demo"]').forEach(a=>a.parentElement.hidden=true);
   $('#welcome p').innerHTML='설치 없이 이 브라우저 안에서 인식합니다. 문서는 서버로 올라가지 않고 이 PC 브라우저에만 저장됩니다.<br>왼쪽에 스캔 이미지나 PDF를 끌어다 놓으세요. <span class="muted">(첫 인식 때 한국어 모델 약 5MB를 내려받습니다)</span>';
-  $('.hbtns').insertAdjacentHTML('afterbegin','<a class="btn" href="https://github.com/handgoldking1234/iux-ocr/releases/latest" target="_blank" rel="noopener" title="정확 모드·AI·폴더 일괄 처리·검색 PDF">'+ic('download')+'PC 버전 받기</a>');
+  $('.hbtns').insertAdjacentHTML('afterbegin','<button class="btn primary" id="btnPc" title="설치형 프로그램 내려받기">'+ic('download')+'PC 버전 받기</button>');
+  $('#btnPc').onclick=()=>$('#mPc').classList.add('on');
+  $('#docCount').insertAdjacentHTML('afterend','<span id="stoInfo" class="muted" style="font-weight:600;text-transform:none;letter-spacing:0;margin-left:6px"></span>');
+  $('.welcome .steps').insertAdjacentHTML('afterend','<div style="margin-top:18px"><button class="btn" onclick="document.getElementById(\'mPc\').classList.add(\'on\')">'+ic('download')+'PC 설치형 내려받기 (대용량·오프라인용)</button></div>');
 }
 
 /* ---------- 이벤트 ---------- */
