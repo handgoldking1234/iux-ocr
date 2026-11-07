@@ -204,6 +204,115 @@ def run_template(text: str, fields: list[dict], model: str | None = None) -> lis
     return results
 
 
+# ================================================================ 자동 항목 (web/rules.js 의 autoFields 와 같은 규칙)
+
+STRONG = ["수신자", "수신", "경유", "참조", "받음", "발신명의", "발신", "제목", "문서번호", "시행일자", "시행", "접수일자", "접수",
+          "보존기간", "공개여부", "공개구분", "기안자", "검토자", "결재권자", "협조자", "담당자", "붙임", "우편번호", "전화번호", "전화", "전송", "팩스",
+          "홈페이지", "전자우편", "생산기관", "생산일자", "심사자", "처리과", "등록번호", "분류번호", "건명"]
+_STRONG_ALT = "|".join(_label_rx(x) for x in sorted(STRONG, key=len, reverse=True))
+_RX_STRONG = re.compile(r"(^|[\s/|·])[\[(（]?\s*(" + _STRONG_ALT + r")\s*[\])）]?(?=\s*[:：]|\s|$)")
+_LIST_MARK = re.compile(r"^\s*(?:\d{1,2}\.|[가-하]\.|\d{1,2}\)|[가-하]\)|\(\d{1,2}\)|\([가-하]\)|[-·•○□■◦※])\s*")
+
+
+def _is_syl(t: str) -> bool:
+    return len(t) == 1 and "가" <= t <= "힣"
+
+
+def _split_label(seg: str) -> tuple[str, str]:
+    toks = seg.split()
+    if not toks:
+        return "", ""
+    j = len(toks) - 1
+    if _is_syl(toks[j]):
+        while j > 0 and _is_syl(toks[j - 1]):
+            j -= 1
+    return "".join(toks[j:]), " ".join(toks[:j])
+
+
+def _colon_pairs(line: str) -> list[tuple[str, str]]:
+    L = _LIST_MARK.sub("", line, count=1)
+    L = re.sub(r"^[\[(（]\s*|\s*[\])）](?=\s*[:：])", "", L)
+    parts = re.split(r"(?<!\d)\s*[:：]\s*", L)
+    if len(parts) < 2:
+        return []
+    if len(parts) == 2:
+        lab = re.sub(r"\s+", "", parts[0])
+        if not re.fullmatch(r"[가-힣]{2,8}|[A-Za-z]{2,15}", lab):
+            return []
+        return [(lab, parts[1])]
+    pairs = []
+    cur_label, _ = _split_label(parts[0])
+    for k in range(1, len(parts)):
+        if k < len(parts) - 1:
+            nl, rest = _split_label(parts[k])
+            pairs.append((cur_label, rest))
+            cur_label = nl
+        else:
+            pairs.append((cur_label, parts[k]))
+    return [(l, v) for l, v in pairs if re.fullmatch(r"[가-힣]{2,10}|[A-Za-z]{2,15}", l)]
+
+
+def _clean_val(v: str) -> str:
+    v = re.sub(r"^[\s:：]+|[\s/|:：]+$", "", v)
+    v = re.sub(r"\s+([.,)\]])", r"\1", v)
+    v = re.sub(r"([(\[])\s+", r"\1", v)
+    from .engines import _looks_split
+    if _looks_split(v):
+        v = refine.fix_syllable_spacing(v)
+    return v.strip()
+
+
+def auto_fields(text: str) -> list[dict]:
+    """문서 속 '수신 ○○', '제 목 ○○', '참조 : ○○' 같은 이름표와 값을 찾아 항목으로 만든다."""
+    lines = refine.normalize(text).split("\n")
+    out: list[dict] = []
+    seen: dict[str, int] = {}
+
+    def add(name: str, value: str):
+        name = re.sub(r"\s+", "", name)
+        value = _clean_val(value)
+        if not name or not value:
+            return
+        if name == "수신자":
+            name = "수신"
+        seen[name] = seen.get(name, 0) + 1
+        out.append({"name": f"{name} {seen[name]}" if seen[name] > 1 else name, "value": value})
+
+    for line in lines:
+        ms = list(_RX_STRONG.finditer(line))
+        if ms and ms[0].start() == 0:
+            segs = [(m.group(2), m.start() + len(m.group(1)), m.end()) for m in ms]
+            for k, (label, _st, end) in enumerate(segs):
+                v = line[end: segs[k + 1][1] if k + 1 < len(segs) else len(line)]
+                v = re.sub(r"^\s*[\])）]?\s*[:：]?", "", v, count=1)
+                if re.sub(r"\s", "", label) == "붙임":
+                    v = re.sub(r"\s*끝\s*\.?\s*$", "", v)
+                add(label, v)
+            continue
+        for l, v in _colon_pairs(line):
+            add(l, v)
+    names = {re.sub(r" \d+$", "", o["name"]) for o in out}
+    gm = {f["key"]: f["value"] for f in refine.extract_fields(text)}
+    for n, k in (("문서번호", "exec_no"), ("시행일자", "exec_date"), ("발신명의", "sender")):
+        if gm.get(k) and n not in names:
+            out.append({"name": n, "value": gm[k]})
+    body = extract_body(text)
+    if body:
+        out.append({"name": "본문", "value": body})
+    return out
+
+
+AUTO_ID = "__auto__"
+AUTO_TEMPLATE = {"id": AUTO_ID, "name": "자동 — 문서에서 항목 찾기", "fields": [], "auto": True}
+
+
+def values_for(tpl: dict, text: str, model: str | None = None) -> list[dict]:
+    """템플릿(또는 자동)으로 항목 값 목록을 만든다."""
+    if tpl.get("auto"):
+        return [{"name": v["name"], "value": v["value"], "type": "auto", "note": ""} for v in auto_fields(text)]
+    return run_template(text, tpl["fields"], model)
+
+
 # ================================================================ 템플릿 저장소
 
 DEFAULT_TEMPLATES = [
@@ -254,6 +363,8 @@ class TemplateStore:
         clean = []
         for t in items:
             t = dict(t)
+            if t.get("auto") or t.get("id") == AUTO_ID:
+                continue
             t["id"] = t.get("id") or uuid.uuid4().hex[:8]
             t["name"] = (t.get("name") or "새 템플릿").strip()
             t["fields"] = [f for f in t.get("fields", []) if (f.get("name") or "").strip()]
@@ -263,4 +374,6 @@ class TemplateStore:
         return clean
 
     def get(self, tid: str | None) -> dict | None:
+        if tid == AUTO_ID:
+            return dict(AUTO_TEMPLATE)
         return next((t for t in self.all() if t["id"] == tid), None) if tid else None

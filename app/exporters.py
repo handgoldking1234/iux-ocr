@@ -119,7 +119,7 @@ def to_xlsx(doc: dict, pages: list[dict], tpl: dict | None = None, model: str | 
         from . import extract
         wsx = wb.create_sheet("추출 항목", 0)
         wsx.append(["항목", "값"])
-        for v in extract.run_template(full, tpl["fields"], model):
+        for v in extract.values_for(tpl, full, model):
             wsx.append([v["name"], v["value"][:32000]])
             wsx.cell(wsx.max_row, 2).alignment = Alignment(wrap_text=True, vertical="top")
         wsx.column_dimensions["A"].width = 18

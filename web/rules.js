@@ -315,6 +315,75 @@
       { name: '계약상대자', type: 'label', label: '계약상대자|수급인|수급자' }, { name: '사업자등록번호', type: 'preset', preset: 'bizno', multi: true }] },
   ];
 
+  /* ---------------- 자동 항목 (문서 속 '이름표 값'을 찾아 항목으로) ---------------- */
+  const STRONG = ['수신자', '수신', '경유', '참조', '받음', '발신명의', '발신', '제목', '문서번호', '시행일자', '시행', '접수일자', '접수',
+    '보존기간', '공개여부', '공개구분', '기안자', '검토자', '결재권자', '협조자', '담당자', '붙임', '우편번호', '전화번호', '전화', '전송', '팩스',
+    '홈페이지', '전자우편', '생산기관', '생산일자', '심사자', '처리과', '등록번호', '분류번호', '건명'];
+  const STRONG_ALT = [...STRONG].sort((a, b) => b.length - a.length).map(labelRx).join('|');
+  const RX_STRONG = new RegExp('(^|[\\s/|·])[\\[(（]?\\s*(' + STRONG_ALT + ')\\s*[\\])）]?(?=\\s*[:：]|\\s|$)', 'g');
+  const LIST_MARK = /^\s*(?:\d{1,2}\.|[가-하]\.|\d{1,2}\)|[가-하]\)|\(\d{1,2}\)|\([가-하]\)|[-·•○□■◦※])\s*/;
+  const isSyl = t => t.length === 1 && t >= '가' && t <= '힣';
+  function splitLabel(seg) { // 콜론 앞 덩어리에서 이름표(마지막 낱말, '명 칭'처럼 띄운 글자는 합침)와 그 앞 내용을 나눔
+    const toks = seg.trim().split(/\s+/).filter(Boolean);
+    if (!toks.length) return { label: '', rest: '' };
+    let j = toks.length - 1;
+    if (isSyl(toks[j])) while (j > 0 && isSyl(toks[j - 1])) j--;
+    return { label: toks.slice(j).join(''), rest: toks.slice(0, j).join(' ') };
+  }
+  function colonPairs(line) {
+    const L = line.replace(LIST_MARK, '').replace(/^[\[(（]\s*|\s*[\])）](?=\s*[:：])/g, '');
+    const parts = L.split(/(?<!\d)\s*[:：]\s*/);
+    if (parts.length < 2) return [];
+    let cur;
+    if (parts.length === 2) { // 이름표 하나: 콜론 앞 전체가 짧을 때만
+      const lab = parts[0].replace(/\s+/g, '');
+      if (!/^(?:[가-힣]{2,8}|[A-Za-z]{2,15})$/.test(lab)) return [];
+      return [[lab, parts[1]]];
+    }
+    const pairs = [];
+    cur = splitLabel(parts[0]);
+    for (let k = 1; k < parts.length; k++) {
+      if (k < parts.length - 1) { const nx = splitLabel(parts[k]); pairs.push([cur.label, nx.rest]); cur = nx; }
+      else pairs.push([cur.label, parts[k]]);
+    }
+    return pairs.filter(([l]) => /^(?:[가-힣]{2,10}|[A-Za-z]{2,15})$/.test(l));
+  }
+  function cleanVal(v) {
+    v = v.replace(/^[\s:：]+|[\s/|:：]+$/g, '').replace(/\s+([.,)\]])/g, '$1').replace(/([(\[])\s+/g, '$1');
+    if (R.looksSplit(v)) v = R.fixSyllableSpacing(v);
+    return v.trim();
+  }
+  R.autoFields = function (text) {
+    const lines = R.normalize(text).split('\n'), out = [], seen = {};
+    const add = (name, value) => {
+      name = name.replace(/\s+/g, ''); value = cleanVal(value);
+      if (!name || !value) return;
+      if (name === '수신자') name = '수신';
+      seen[name] = (seen[name] || 0) + 1;
+      out.push({ name: seen[name] > 1 ? `${name} ${seen[name]}` : name, value });
+    };
+    for (const line of lines) {
+      const ms = [...line.matchAll(RX_STRONG)];
+      if (ms.length && ms[0].index === 0) {
+        const segs = ms.map(m => ({ label: m[2], start: m.index + m[1].length, end: m.index + m[0].length }));
+        segs.forEach((g, k) => {
+          let v = line.slice(g.end, k + 1 < segs.length ? segs[k + 1].start : line.length);
+          v = v.replace(/^\s*[\])）]?\s*[:：]?/, '');
+          if (g.label.replace(/\s/g, '') === '붙임') v = v.replace(/\s*끝\s*\.?\s*$/, '');
+          add(g.label, v);
+        });
+        continue;
+      }
+      for (const [l, v] of colonPairs(line)) add(l, v);
+    }
+    const names = new Set(out.map(o => o.name.replace(/ \d+$/, '')));
+    const gm = Object.fromEntries(R.extractFields(text).map(f => [f.key, f.value]));
+    [['문서번호', 'exec_no'], ['시행일자', 'exec_date'], ['발신명의', 'sender']].forEach(([n, k]) => { if (gm[k] && !names.has(n)) out.push({ name: n, value: gm[k] }); });
+    const body = R.extractBody(text);
+    if (body) out.push({ name: '본문', value: body });
+    return out;
+  };
+
   R.linesToText = function (lines) {
     const out = []; let prev = null;
     for (const l of lines) { if (prev !== null && l.block !== prev) out.push(''); out.push(l.text); prev = l.block; }

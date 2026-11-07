@@ -245,8 +245,11 @@
   /* ---------------- 템플릿·항목 ---------------- */
   const TKEY = 'iuxocr.web.templates';
   function templates() { try { const t = JSON.parse(localStorage.getItem(TKEY)); if (Array.isArray(t)) return t; } catch (e) {} return JSON.parse(JSON.stringify(R.DEFAULT_TEMPLATES)); }
+  const AUTO = { id: '__auto__', name: '자동 — 문서에서 항목 찾기', fields: [], auto: true };
+  const tplById = id => id === AUTO.id ? AUTO : templates().find(t => t.id === id);
+  const valuesFor = (t, text) => t.auto ? R.autoFields(text).map(v => ({ ...v, type: 'auto', note: '' })) : R.runTemplate(text, t.fields);
   function saveTemplates(items) {
-    const clean = items.map(t => ({ ...t, id: t.id || uid().slice(0, 8), name: (t.name || '새 템플릿').trim(), fields: (t.fields || []).filter(f => (f.name || '').trim()) }));
+    const clean = items.filter(t => !t.auto && t.id !== AUTO.id).map(t => ({ ...t, id: t.id || uid().slice(0, 8), name: (t.name || '새 템플릿').trim(), fields: (t.fields || []).filter(f => (f.name || '').trim()) }));
     try { localStorage.setItem(TKEY, JSON.stringify(clean)); } catch (e) {}
     return clean;
   }
@@ -278,8 +281,8 @@
     if (fmt === 'xlsx') {
       if (!window.XLSX) await loadScript(BASE + 'xlsx.full.min.js');
       const wb = XLSX.utils.book_new(), full = pages.map(p => p.result.text).join('\n');
-      const tpl = templates().find(t => t.id === tid);
-      if (tpl) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['항목', '값'], ...R.runTemplate(full, tpl.fields).map(v => [v.name, v.value])]), '추출 항목');
+      const tpl = tplById(tid);
+      if (tpl) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['항목', '값'], ...valuesFor(tpl, full).map(v => [v.name, v.value])]), '추출 항목');
       const rows = [['페이지', '줄', '텍스트', '신뢰도', '엔진', 'x', 'y', 'w', 'h']];
       pages.forEach(p => effectiveLines(p.result).forEach((l, j) => rows.push([p.index + 1, j + 1, l.text, l.conf, p.result.engine, ...(l.box || [null, null, null, null]).map(v => v == null ? null : Math.round(v * 1e4) / 1e4)])));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '줄별 인식결과');
@@ -324,6 +327,26 @@
       const d = await getDoc(m[1]); const pg = await runOcr(d, body.page, body);
       const fresh = await getDoc(m[1]); fresh.pages[body.page] = pg; await putDoc(fresh); return pg;
     }
+    if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/ocr-region$/))) {
+      const d = await getDoc(m[1]), i = body.page;
+      const k = body.view === 'proc' && await getBlob(`${d.id}/proc/${i}`) ? 'proc' : 'image';
+      const src = await blobToCanvas(await getBlob(`${d.id}/${k}/${i}`));
+      const [x0, y0, x1, y1] = body.box, pad = 6;
+      const X0 = Math.max(0, Math.floor(x0 * src.width) - pad), Y0 = Math.max(0, Math.floor(y0 * src.height) - pad);
+      const X1 = Math.min(src.width, Math.ceil(x1 * src.width) + pad), Y1 = Math.min(src.height, Math.ceil(y1 * src.height) + pad);
+      if (X1 - X0 < 8 || Y1 - Y0 < 8) fail('선택 영역이 너무 작습니다.');
+      const sc = (Y1 - Y0) < 120 ? Math.min(3, 120 / (Y1 - Y0)) : 1;
+      const c = canvas(Math.round((X1 - X0) * sc), Math.round((Y1 - Y0) * sc)), x = c.getContext('2d');
+      x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.imageSmoothingQuality = 'high';
+      x.drawImage(src, X0, Y0, X1 - X0, Y1 - Y0, 0, 0, c.width, c.height);
+      const lang = ['kor+eng', 'kor', 'eng'].includes(body.lang) ? body.lang : 'kor+eng';
+      const w = await worker(lang);
+      await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+      const { data } = await w.recognize(c, {}, { text: true, blocks: true });
+      const lines = [];
+      (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(l => { let t = (l.text || '').trim(); if (t) { if (R.looksSplit(t)) t = R.fixSyllableSpacing(t); lines.push(t); } })));
+      return { text: lines.join('\n'), mean_conf: data.confidence };
+    }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/pages\/(\d+)$/))) {
       const d = await getDoc(m[1]), pg = d.pages[+m[2]];
       const r = pg.result || { engine: 'manual', lines: [], mean_conf: null };
@@ -333,9 +356,9 @@
       const d = await getDoc(m[1]); d.fields = { ...body, at: Date.now() / 1000 }; await putDoc(d); return d.fields;
     }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/autofill$/))) {
-      const d = await getDoc(m[1]), t = templates().find(x => x.id === body.template_id) || fail('템플릿을 찾을 수 없습니다.');
+      const d = await getDoc(m[1]), t = tplById(body.template_id) || fail('템플릿을 찾을 수 없습니다.');
       const text = fullText(d); if (!text.trim()) fail('인식된 텍스트가 없습니다.');
-      d.fields = { template_id: t.id, values: R.runTemplate(text, t.fields).map(v => ({ name: v.name, value: v.value, note: v.note })), checked: false, edited: false, at: Date.now() / 1000 };
+      d.fields = { template_id: t.id, values: valuesFor(t, text).map(v => ({ name: v.name, value: v.value, note: v.note || '' })), checked: false, edited: false, at: Date.now() / 1000 };
       await putDoc(d); return d.fields;
     }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/export$/))) {
@@ -358,11 +381,11 @@
     }
     if (p === '/api/templates') {
       if (method === 'PUT') return { templates: saveTemplates(body) };
-      return { templates: templates(), presets: Object.fromEntries(Object.entries(R.PRESETS).map(([k, v]) => [k, v[0]])), gongmun: R.GONGMUN_KEYS, formats: R.FORMATS };
+      return { templates: [AUTO].concat(templates()), presets: Object.fromEntries(Object.entries(R.PRESETS).map(([k, v]) => [k, v[0]])), gongmun: R.GONGMUN_KEYS, formats: R.FORMATS };
     }
     if (p === '/api/extract') {
-      const fields = body.fields || (templates().find(t => t.id === body.template_id) || fail('템플릿을 찾을 수 없습니다.')).fields;
-      return { values: R.runTemplate(body.text, fields) };
+      if (body.fields) return { values: R.runTemplate(body.text, body.fields) };
+      return { values: valuesFor(tplById(body.template_id) || fail('템플릿을 찾을 수 없습니다.'), body.text) };
     }
     if (p === '/api/helper/token') return { token: 'web' };
     if (p.startsWith('/api/helper/')) return { doc: null, fields: [] };

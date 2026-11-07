@@ -240,6 +240,16 @@ table.fields td[contenteditable]{outline:none}
 .doc .chk{font-size:10px;font-weight:800;color:var(--ok);background:var(--ok-bg);border-radius:4px;padding:0 5px}
 .doc .fil{font-size:10px;font-weight:700;color:var(--accent-ink);background:var(--accent-2);border-radius:4px;padding:0 5px}
 .bm{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;background:#1f2a44;color:#fff;font-weight:800;text-decoration:none;cursor:grab}
+.selrect{position:absolute;border:2px solid var(--accent);background:rgba(47,91,255,.12);pointer-events:none;border-radius:2px;z-index:3}
+.viewer.selmode .stage{cursor:crosshair}
+.viewer.panning,.viewer.panmode .stage{cursor:grab}
+.selpop{position:absolute;z-index:6;width:340px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.22);padding:10px;display:flex;flex-direction:column;gap:8px}
+.selpop .hd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--text-2)}
+.selpop .hd .sp{flex:1}
+.selpop textarea{width:100%;min-height:64px;max-height:220px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;line-height:1.55;resize:vertical;background:var(--panel);outline:none}
+.selpop textarea:focus{border-color:var(--accent)}
+.selpop .row{gap:6px;flex-wrap:wrap}
+.selpop select{flex:1;height:28px;font-size:12px}
 .muted{color:var(--text-3);font-size:11.5px;line-height:1.55}
 /* export */
 .fmts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -327,6 +337,7 @@ table.fields td[contenteditable]{outline:none}
           <button data-v="image" class="on">원본</button>
           <button data-v="proc">전처리</button>
         </div>
+        <div class="seg" id="toolSeg"><button data-tool="select" title="드래그해서 영역의 글자 선택·복사 (Space를 누른 채 드래그하면 이동)"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>영역 선택</button><button data-tool="pan" title="드래그로 화면 이동"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/></svg>이동</button></div>
         <div class="seg"><button id="boxToggle" class="on"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>인식 영역</button></div>
         <span class="name" id="vName"></span>
       </div>
@@ -346,7 +357,9 @@ table.fields td[contenteditable]{outline:none}
         <div class="stage" id="stage" hidden>
           <img id="pimg" alt="">
           <svg id="overlay" viewBox="0 0 1 1" preserveAspectRatio="none"></svg>
+          <div class="selrect" id="selRect" hidden></div>
         </div>
+        <div class="selpop" id="selPop" hidden></div>
       </div>
     </section>
 
@@ -733,6 +746,7 @@ function gotoPage(i){if(!S.doc)return;S.page=Math.max(0,Math.min(S.doc.pages.len
 
 /* ---------- 뷰어 ---------- */
 function renderViewer(){
+  if(SEL.key&&SEL.key!==selKey())hideSel();
   const p=curPage();
   $('#welcome').hidden=!!p;$('#stage').hidden=!p;
   $('#pgLabel').textContent=p?`${S.page+1} / ${S.doc.pages.length}`:'-';
@@ -941,7 +955,7 @@ async function loadTemplates(){
   try{const r=await api('/api/templates');T.list=r.templates;T.presets=r.presets;T.gongmun=r.gongmun;T.formats=r.formats}catch(e){return}
   if(S.set.tpl&&!T.list.some(t=>t.id===S.set.tpl))S.set.tpl='';
   if(S.set.tpl===undefined)S.set.tpl=T.list[0]?.id||'';
-  const opts=T.list.map(t=>`<option value="${t.id}">${esc(t.name)} · ${t.fields.length}개 항목</option>`).join('');
+  const opts=T.list.map(t=>`<option value="${t.id}">${esc(t.name)}${t.auto?'':` · ${t.fields.length}개 항목`}</option>`).join('');
   $('#tplSel').innerHTML=opts||'<option value="">템플릿 없음</option>';$('#tplSel').value=S.set.tpl||'';
   $('#fTpl').innerHTML=opts||'<option value="">템플릿 없음</option>';$('#fTpl').value=S.set.tpl||'';
   $('#bTpl').innerHTML='<option value="">사용 안 함</option>'+opts;$('#bTpl').value=store.get('bTpl','');
@@ -949,7 +963,7 @@ async function loadTemplates(){
 }
 function renderTplDesc(){
   const t=T.list.find(x=>x.id===S.set.tpl);
-  $('#tplDesc').textContent=t?t.fields.map(f=>f.name).join(' · '):'항목 편집에서 원하는 항목을 만들어 보세요.';
+  $('#tplDesc').textContent=t?.auto?'문서에서 수신·참조·제목·받음처럼 이름표가 붙은 내용을 찾아 항목을 자동으로 만듭니다.':t?t.fields.map(f=>f.name).join(' · '):'항목 편집에서 원하는 항목을 만들어 보세요.';
   $('#expTpl').textContent=t?t.name:'없음';
 }
 function scopeText(){return scopePages().map(p=>p.result.text).join('\n')}
@@ -962,7 +976,7 @@ async function runTemplate(){
   catch(e){box.innerHTML='';toast(e.message,true)}
 }
 function openTplEditor(){
-  T.edit=JSON.parse(JSON.stringify(T.list));T.editIdx=Math.max(0,T.edit.findIndex(t=>t.id===S.set.tpl));T.preview=null;
+  T.edit=JSON.parse(JSON.stringify(T.list.filter(t=>!t.auto)));T.editIdx=Math.max(0,T.edit.findIndex(t=>t.id===S.set.tpl));T.preview=null;
   if(!T.edit.length){T.edit.push({id:'',name:'새 템플릿',fields:[{name:'제목',type:'gongmun',key:'title'}]});T.editIdx=0}
   renderTplEditor();$('#mTpl').classList.add('on');
 }
@@ -1046,6 +1060,7 @@ function renderFields(){
   const other=f.template_id!==S.set.tpl?T.list.find(t=>t.id===f.template_id):null;
   $('#fStat').innerHTML=`<span>${found}/${vals.length}개 채움</span>·<span>${f.edited?'직접 수정함':'자동 채움'}</span>·<span>복사 ${S.copied.size}/${vals.length}</span>${other||f.template_id!==S.set.tpl?`<span class="fb miss">다른 템플릿(${esc(other?.name||'삭제됨')}) 값</span><button class="btn sm" id="fSwitch">이 템플릿으로 채우기</button>`:''}`;
   $('#fSwitch')?.addEventListener('click',()=>{if(!f.edited||confirm('직접 고친 값이 사라집니다. 다시 채울까요?'))ensureFields(true)});
+  if(f.template_id==='__auto__'&&vals.length){$('#fStat').insertAdjacentHTML('beforeend',`<span style="flex:1"></span><button class="btn sm" id="fSaveTpl" title="찾은 항목 이름으로 템플릿을 만들어 다음 문서에도 같은 항목을 씁니다">${ic('check')}템플릿으로 저장</button>`);$('#fSaveTpl').onclick=saveAutoAsTemplate}
   list.innerHTML=vals.map((v,i)=>{
     const badge=v.note==='ai'?'<span class="fb ai">AI</span>':(!v.value?'<span class="fb miss">못 찾음</span>':'');
     return `<div class="fc ${S.copied.has(i)?'copied':''} ${v.value?'':'empty'}" data-i="${i}"><div class="fh"><span class="fn">${esc(v.name)}</span>${badge}${S.copied.has(i)?'<span class="fb ok">복사됨</span>':''}<span class="sp"></span><button class="btn icon sm ghost" data-cp="${i}" title="이 항목 복사">${ic('copy')}</button></div><textarea class="fv" rows="1" data-v="${i}" spellcheck="false" placeholder="못 찾았습니다 — 직접 입력하거나 문서를 보고 채우세요">${esc(v.value)}</textarea></div>`}).join('');
@@ -1093,6 +1108,116 @@ function bindFields(){
   $('#fDoneNext').onclick=doneNext;
   $('#fHelper').onclick=openHelperModal;
   addEventListener('keydown',e=>{if(e.altKey&&(e.key==='c'||e.key==='C'||e.code==='KeyC')&&S.tab==='fields'){e.preventDefault();copyNext()}});
+}
+
+async function saveAutoAsTemplate(){
+  const vals=S.doc?.fields?.values||[];if(!vals.length)return;
+  const name=prompt('새 템플릿 이름',`자동 항목 — ${S.doc.name.replace(/\.[^.]+$/,'')}`);if(!name)return;
+  const seen=new Set(),fields=[];
+  for(const v of vals){const base=v.name.replace(/ \d+$/,'');if(seen.has(base))continue;seen.add(base);
+    fields.push(base==='본문'?{name:'본문',type:'body'}:{name:base,type:'label',label:base,multi:vals.filter(x=>x.name.replace(/ \d+$/,'')===base).length>1})}
+  try{const cur=T.list.filter(t=>!t.auto);const r=await api('/api/templates',{method:'PUT',json:[...cur,{id:'',name,fields}]});
+    const nt=r.templates.find(t=>t.name===name);await loadTemplates();if(nt){S.set.tpl=nt.id;saveSet();$('#fTpl').value=nt.id;$('#tplSel').value=nt.id;renderTplDesc()}
+    toast(`'${name}' 템플릿을 만들었습니다 (${fields.length}개 항목). 항목 편집에서 다듬을 수 있습니다`)}catch(e){toast(e.message,true)}
+}
+
+/* ---------- 영역 선택 → 글자 복사 ---------- */
+const SEL={drag:null,box:null,key:null,space:false};
+S.tool=store.get('tool','select');
+const selKey=()=>S.doc?`${S.doc.id}/${S.page}`:null;
+function setTool(t){S.tool=t;store.set('tool',t);$$('#toolSeg button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));$('#viewer').classList.toggle('selmode',t==='select');$('#viewer').classList.toggle('panmode',t==='pan')}
+function stagePt(e){const r=$('#stage').getBoundingClientRect();return[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]}
+function drawSelRect(b){const el=$('#selRect');el.hidden=false;el.style.left=b[0]*100+'%';el.style.top=b[1]*100+'%';el.style.width=(b[2]-b[0])*100+'%';el.style.height=(b[3]-b[1])*100+'%'}
+function hideSel(){SEL.box=null;SEL.key=null;$('#selRect').hidden=true;$('#selPop').hidden=true}
+/* 선택 영역에 걸친 인식 줄 찾기. 줄의 일부만 잘렸으면 null(→ 영역 다시 인식) */
+function linesInBox(b){
+  const L=curPage()?.result?.lines||[],hit=[];let partial=false;
+  L.forEach((l,i)=>{if(!l.box)return;const[x,y,w,h]=l.box;
+    const ix=Math.max(0,Math.min(x+w,b[2])-Math.max(x,b[0])),iy=Math.max(0,Math.min(y+h,b[3])-Math.max(y,b[1]));
+    if(iy<h*0.5||ix<=0)return;
+    if(ix<w*0.6)partial=true;hit.push(i)});
+  return{hit,partial};
+}
+async function onSelected(b){
+  SEL.box=b;SEL.key=selKey();
+  const p=curPage();const{hit,partial}=linesInBox(b);
+  if(hit.length&&!partial){
+    const L=p.result.lines;let prev=null,out=[];for(const i of hit){if(prev!==null&&L[i].block!==L[prev].block)out.push('');out.push(L[i].text);prev=i}
+    showSelPop(out.join('\n'),`인식된 ${hit.length}줄`);
+  }else regionOcr(b,hit.length?'줄 일부만 선택해 이 영역만 인식':'이 영역 인식');
+}
+async function regionOcr(b,label){
+  showSelPop(null,label);
+  try{const r=await api(`/api/docs/${S.doc.id}/ocr-region`,{json:{page:S.page,box:b,view:S.view==='proc'&&curPage()?.result?.pre?'proc':'image',engine:S.set.engine==='paddle'?'paddle':(S.set.engine==='ollama'?'ollama':'tesseract'),lang:S.set.lang,model:S.set.vlm||null}});
+    if(SEL.box!==b)return;showSelPop(r.text||'',`${label}${r.mean_conf!=null?` · 신뢰도 ${Math.round(r.mean_conf)}`:''}`)}
+  catch(e){if(SEL.box===b)showSelPop('',`인식 실패: ${e.message}`)}
+}
+function showSelPop(text,label){
+  const pop=$('#selPop'),st=$('#stage'),v=$('#viewer'),b=SEL.box;if(!b)return;
+  const vals=S.doc?.fields?.values||[];
+  pop.innerHTML=`<div class="hd">${ic('copy')}<span>선택 영역</span><span class="muted" style="font-weight:600">${esc(label||'')}</span><span class="sp"></span><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
+    ${text===null?`<div class="placeholder" style="padding:14px">${ic('loader','spin')} 인식 중…</div>`:`<textarea id="spText" spellcheck="false">${esc(text)}</textarea>`}
+    <div class="row"><button class="btn sm primary" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 (Ctrl+C)</button><button class="btn sm" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button></div>
+    <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div>`;
+  pop.hidden=false;
+  const L=st.offsetLeft,T_=st.offsetTop,W=st.offsetWidth,H=st.offsetHeight;
+  let left=L+b[0]*W,top=T_+b[3]*H+8;
+  const maxL=v.scrollLeft+v.clientWidth-pop.offsetWidth-12;left=Math.max(v.scrollLeft+8,Math.min(left,maxL));
+  if(top+pop.offsetHeight>v.scrollTop+v.clientHeight-8)top=Math.max(v.scrollTop+8,T_+b[1]*H-pop.offsetHeight-8);
+  pop.style.left=left+'px';pop.style.top=top+'px';
+  $('#spX').onclick=hideSel;
+  $('#spRe').onclick=()=>regionOcr(b,'이 영역 인식');
+  $('#spCopy').onclick=copySel;
+  $('#spField').onchange=e=>putSelIntoField(e.target.value);
+  $('#spText')?.addEventListener('keydown',e=>{if(e.key==='Escape')hideSel()});
+}
+function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(t,'선택 영역의 글자를 복사했습니다')}
+async function putSelIntoField(sel){
+  const t=$('#spText')?.value;if(!t||sel==='')return;const d=S.doc;
+  if(!d.fields)d.fields={template_id:S.set.tpl||'',values:[],checked:false,edited:true};
+  let name;
+  if(sel==='new'){name=prompt('새 항목 이름 (예: 받음, 참조, 보존기간)');if(!name){$('#spField').value='';return}d.fields.values.push({name:name.trim(),value:t,note:''})}
+  else{const v=d.fields.values[+sel];v.value=t;v.note='';name=v.name}
+  d.fields.edited=true;
+  await api(`/api/docs/${d.id}/fields`,{method:'PUT',json:{template_id:d.fields.template_id,values:d.fields.values,checked:!!d.fields.checked,edited:true}});
+  renderFields();loadDocs();toast(`'${name}' 항목에 넣었습니다`);showSelPop(t,'항목에 넣음');
+}
+function bindSelect(){
+  const v=$('#viewer');setTool(S.tool);
+  $$('#toolSeg button').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+  let pan=null;
+  v.addEventListener('mousedown',e=>{
+    if(e.target.closest('#selPop'))return;
+    const onStage=e.target.closest('#stage');
+    if(e.button===1||SEL.space||S.tool==='pan'||!onStage){
+      if(e.target.closest('rect')&&S.tool==='pan')return;
+      pan={x:e.clientX,y:e.clientY,l:v.scrollLeft,t:v.scrollTop};v.classList.add('panning');e.preventDefault();return;
+    }
+    if(e.button!==0)return;
+    e.preventDefault();const p0=stagePt(e);SEL.drag={p0,moved:false};
+  });
+  addEventListener('mousemove',e=>{
+    if(pan){v.scrollLeft=pan.l-(e.clientX-pan.x);v.scrollTop=pan.t-(e.clientY-pan.y);return}
+    if(!SEL.drag)return;const p1=stagePt(e),p0=SEL.drag.p0;
+    const b=[Math.min(p0[0],p1[0]),Math.min(p0[1],p1[1]),Math.max(p0[0],p1[0]),Math.max(p0[1],p1[1])];
+    if(!SEL.drag.moved&&(b[2]-b[0])*$('#stage').offsetWidth<5&&(b[3]-b[1])*$('#stage').offsetHeight<5)return;
+    SEL.drag.moved=true;SEL.drag.box=b;$('#selPop').hidden=true;drawSelRect(b);
+  });
+  addEventListener('mouseup',e=>{
+    if(pan){pan=null;v.classList.remove('panning');return}
+    if(!SEL.drag)return;const d=SEL.drag;SEL.drag=null;
+    if(!d.moved){ // 클릭: 인식 박스 위면 그 줄 선택, 아니면 선택 해제
+      if(!(e.target.closest&&e.target.closest('rect.bx')))hideSel();return}
+    if(!curPage())return;onSelected(d.box);
+  });
+  addEventListener('keydown',e=>{
+    if(e.code==='Space'&&!e.target.closest('input,textarea,select,[contenteditable]')){if(!SEL.space){SEL.space=true;v.classList.add('panmode')}e.preventDefault()}
+    if((e.ctrlKey||e.metaKey)&&(e.key==='c'||e.key==='C')&&!$('#selPop').hidden){
+      const tgt=e.target.closest('input,textarea,[contenteditable]');
+      if(!tgt||(tgt.id==='spText'&&tgt.selectionStart===tgt.selectionEnd)){e.preventDefault();copySel()}
+    }
+  });
+  addEventListener('keyup',e=>{if(e.code==='Space'){SEL.space=false;v.classList.toggle('panmode',S.tool==='pan')}});
 }
 
 /* ---------- 내보내기 ---------- */
@@ -1258,9 +1383,7 @@ function bind(){
   $('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=()=>{S.zoom=null;applyZoom()};
   $('#viewer').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1)}},{passive:false});
   // 드래그로 이동
-  let pan=null;$('#viewer').addEventListener('mousedown',e=>{if(e.target.closest('rect'))return;pan={x:e.clientX,y:e.clientY,l:$('#viewer').scrollLeft,t:$('#viewer').scrollTop};$('#viewer').style.cursor='grabbing'});
-  addEventListener('mousemove',e=>{if(!pan)return;$('#viewer').scrollLeft=pan.l-(e.clientX-pan.x);$('#viewer').scrollTop=pan.t-(e.clientY-pan.y)});
-  addEventListener('mouseup',()=>{pan=null;$('#viewer').style.cursor=''});
+  bindSelect();
   addEventListener('resize',()=>{if(S.zoom==null)applyZoom()});
   $$('#viewSeg button').forEach(b=>b.onclick=()=>{if(b.disabled)return;S.view=b.dataset.v;renderViewer()});
   $('#boxToggle').onclick=()=>{S.boxes=!S.boxes;$('#boxToggle').classList.toggle('on',S.boxes);renderViewer()};
@@ -1301,7 +1424,7 @@ function bind(){
     if(typing)return;
     if(e.key==='ArrowRight'||e.key==='PageDown')gotoPage(S.page+1);
     if(e.key==='ArrowLeft'||e.key==='PageUp')gotoPage(S.page-1);
-    if(e.key==='Escape')$$('.modal').forEach(m=>m.classList.remove('on'));
+    if(e.key==='Escape'){$$('.modal').forEach(m=>m.classList.remove('on'));hideSel()}
   });
 }
 if(window.WEB)applyWebMode();

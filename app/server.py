@@ -201,6 +201,15 @@ class OcrReq(BaseModel):
     fix_spacing: bool = True
 
 
+class RegionReq(BaseModel):
+    page: int
+    box: list[float]  # [x0, y0, x1, y1] 0~1
+    view: str = "image"
+    engine: str = "tesseract"
+    lang: str = "kor+eng"
+    model: str | None = None
+
+
 class FieldsUpdate(BaseModel):
     template_id: str | None = None
     values: list[dict] = []
@@ -408,6 +417,35 @@ def api_ocr(doc_id: str, req: OcrReq):
     return page
 
 
+@app.post("/api/docs/{doc_id}/ocr-region")
+def api_ocr_region(doc_id: str, req: RegionReq):
+    """화면에서 드래그한 영역만 잘라 인식 (선택 영역 복사용)."""
+    doc = load_doc(doc_id)
+    if not 0 <= req.page < len(doc["pages"]):
+        raise HTTPException(400, "페이지 번호 오류")
+    p = doc["pages"][req.page]
+    path = DOCS / doc_id / (p["proc"] if req.view == "proc" and (DOCS / doc_id / p["proc"]).exists() else p["file"])
+    img = preprocess.load_bgr(str(path))
+    h, w = img.shape[:2]
+    x0, y0, x1, y1 = [max(0.0, min(1.0, v)) for v in (req.box + [0, 0, 1, 1])[:4]]
+    pad = 6
+    X0, Y0 = max(0, int(x0 * w) - pad), max(0, int(y0 * h) - pad)
+    X1, Y1 = min(w, int(x1 * w) + pad), min(h, int(y1 * h) + pad)
+    if X1 - X0 < 8 or Y1 - Y0 < 8:
+        raise HTTPException(400, "선택 영역이 너무 작습니다.")
+    crop = img[Y0:Y1, X0:X1]
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    if gray.shape[0] < 120:  # 작은 영역은 키워서 인식률 올림
+        s_ = min(3.0, 120 / max(1, gray.shape[0]))
+        gray = cv2.resize(gray, None, fx=s_, fy=s_, interpolation=cv2.INTER_CUBIC)
+        crop = cv2.resize(crop, None, fx=s_, fy=s_, interpolation=cv2.INTER_CUBIC)
+    try:
+        res = engines.run_engine(req.engine, gray, crop, req.lang, 6, req.model)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"영역 인식 실패: {e}") from e
+    return {"text": res["text"], "mean_conf": res.get("mean_conf")}
+
+
 @app.put("/api/docs/{doc_id}/pages/{idx}")
 def api_page_update(doc_id: str, idx: int, upd: PageUpdate):
     with _lock:
@@ -456,7 +494,7 @@ def api_autofill(doc_id: str, req: AutofillReq):
     text = "\n".join(p["result"]["text"] for p in doc["pages"] if p.get("result"))
     if not text.strip():
         raise HTTPException(400, "인식된 텍스트가 없습니다.")
-    vals = extract.run_template(text, t["fields"], req.model)
+    vals = extract.values_for(t, text, req.model)
     with _lock:
         doc = load_doc(doc_id)
         doc["fields"] = {"template_id": t["id"], "values": [{"name": v["name"], "value": v["value"], "note": v.get("note", "")} for v in vals],
@@ -530,7 +568,7 @@ def api_helper_move(body: dict, t: str | None = None):
 
 @app.get("/api/templates")
 def api_templates():
-    return {"templates": TEMPLATES.all(), "presets": {k: v[0] for k, v in extract.PRESETS.items()},
+    return {"templates": [extract.AUTO_TEMPLATE] + TEMPLATES.all(), "presets": {k: v[0] for k, v in extract.PRESETS.items()},
             "gongmun": extract.GONGMUN_KEYS, "formats": extract.FORMATS}
 
 
@@ -542,12 +580,14 @@ def api_templates_save(items: list[dict]):
 @app.post("/api/extract")
 def api_extract(req: ExtractReq):
     fields = req.fields
+    t = None
     if fields is None:
         t = TEMPLATES.get(req.template_id)
         if not t:
             raise HTTPException(400, "템플릿을 찾을 수 없습니다.")
-        fields = t["fields"]
     try:
+        if t is not None:
+            return {"values": extract.values_for(t, req.text, req.model)}
         return {"values": extract.run_template(req.text, fields, req.model)}
     except Exception as e:  # noqa: BLE001
         traceback.print_exc()
@@ -644,8 +684,8 @@ def _batch_worker(req: BatchReq) -> None:
                 save_doc(doc)
                 if tpl:
                     full = "\n".join(p["result"]["text"] for p in doc["pages"])
-                    vals = extract.run_template(full, tpl["fields"], req.llm)
-                    ext_rows.append([str(rel), len(doc["pages"])] + [v["value"] for v in vals])
+                    vals = extract.values_for(tpl, full, req.llm)
+                    ext_rows.append((str(rel), len(doc["pages"]), [(v["name"], v["value"]) for v in vals]))
                 for fmt in req.formats:
                     data = exporters.export(fmt, doc, doc["pages"], DOCS / doc["id"])
                     (target_dir / (f.stem + exporters.FORMATS[fmt][1])).write_bytes(data)
@@ -666,9 +706,15 @@ def _batch_worker(req: BatchReq) -> None:
             wb = Workbook()
             ws = wb.active
             ws.title = "추출 항목"
-            ws.append(["파일", "페이지수"] + [f["name"] for f in tpl["fields"]])
-            for r in ext_rows:
-                ws.append([str(v)[:32000] if isinstance(v, str) else v for v in r])
+            cols: list[str] = []  # 자동 항목은 파일마다 항목이 달라 전체 합집합을 열로
+            for _, _, kv in ext_rows:
+                for n, _v in kv:
+                    if n not in cols:
+                        cols.append(n)
+            ws.append(["파일", "페이지수"] + cols)
+            for rel_, npg, kv in ext_rows:
+                d_ = dict(kv)
+                ws.append([rel_, npg] + [str(d_.get(c, ""))[:32000] for c in cols])
             for c in ws[1]:
                 c.fill, c.font = PatternFill("solid", fgColor="1F2A44"), Font(bold=True, color="FFFFFF")
             for row in ws.iter_rows(min_row=2):
