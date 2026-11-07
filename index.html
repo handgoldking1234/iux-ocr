@@ -333,6 +333,9 @@ table.fields td[contenteditable]{outline:none}
         <button class="btn icon sm ghost" id="zIn" data-ic="zoomin" title="확대"></button>
         <button class="btn icon sm ghost" id="zFit" data-ic="fit" title="화면 맞춤"></button>
         <span class="sep"></span>
+        <button class="btn icon sm ghost" id="rotL" data-ic="rotl" title="왼쪽으로 90° 돌리기 (Shift+클릭: 문서 모든 쪽)"></button>
+        <button class="btn icon sm ghost" id="rotR" data-ic="rotr" title="오른쪽으로 90° 돌리기 (Shift+클릭: 문서 모든 쪽)"></button>
+        <span class="sep"></span>
         <div class="seg" id="viewSeg">
           <button data-v="image" class="on">원본</button>
           <button data-v="proc">전처리</button>
@@ -395,7 +398,7 @@ table.fields td[contenteditable]{outline:none}
             <button class="chip" data-k="upscale">저해상도 확대</button>
             <button class="chip" data-k="denoise">노이즈 제거</button>
             <button class="chip" data-k="binarize">흑백화</button>
-            <button class="chip" data-k="orient">방향 감지</button>
+            <button class="chip" data-k="orient" title="90°·180°로 돌아간 페이지를 찾아 바로 세움">방향 자동</button>
             <button class="chip" data-k="fixSpacing" title="Tesseract 한글 음절 띄어쓰기 오류 보정">띄어쓰기 보정</button>
           </div>
         </div>
@@ -641,6 +644,8 @@ const IC={
  refresh:'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
  file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
  image:'<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+ rotl:'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+ rotr:'<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
  undo:'<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
  eye:'<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
 };
@@ -671,10 +676,11 @@ function linesToText(lines){const out=[];let prev=null;for(const l of lines){if(
 const S={
   engines:null, docs:[], doc:null, page:0, view:'image', boxes:true, zoom:null, sel:-1,
   editMode:store.get('editMode','lines'), running:false, stop:false,
-  set:Object.assign({engine:'tesseract',lang:'kor+eng',psm:'4',vlm:'',llm:'',pre:{deskew:true,contrast:true,upscale:true,denoise:false,binarize:false,orient:false,fixSpacing:true}},store.get('settings',{})),
+  set:Object.assign({engine:'tesseract',lang:'kor+eng',psm:'4',vlm:'',llm:'',pre:{deskew:true,contrast:true,upscale:true,denoise:false,binarize:false,orient:true,fixSpacing:true}},store.get('settings',{})),
   scope:'page', expScope:'all', rf:null,
 };
 const saveSet=()=>store.set('settings',S.set);
+if(store.get('setver',1)<2){S.set.pre.orient=true;store.set('setver',2);saveSet()}  // 방향 자동 기본 켬
 const curPage=()=>S.doc?.pages[S.page];
 
 /* ---------- 엔진 상태 ---------- */
@@ -758,7 +764,7 @@ function renderThumbs(){
   $('#thumbs').innerHTML=S.doc.pages.map((p,i)=>{
     const r=p.result;let st='';
     if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':'AI')}</span>`}
-    return `<div class="th ${i===S.page?'on':''}" data-i="${i}" title="${esc(p.source||'')}"><img loading="lazy" src="${fileUrl(S.doc.id,'thumb',i)}"><span class="no">${i+1}</span>${st}</div>`}).join('');
+    return `<div class="th ${i===S.page?'on':''}" data-i="${i}" title="${esc(p.source||'')}"><img loading="lazy" src="${fileUrl(S.doc.id,'thumb',i,p.rev||0)}"><span class="no">${i+1}</span>${st}</div>`}).join('');
   $$('#thumbs .th').forEach(el=>el.onclick=()=>gotoPage(+el.dataset.i));
 }
 function setThumbRunning(i){const el=$(`#thumbs .th[data-i="${i}"]`);if(!el)return;el.querySelector('.st')?.remove();el.insertAdjacentHTML('beforeend','<span class="st run">…</span>')}
@@ -777,7 +783,7 @@ function renderViewer(){
   if(!p)return;
   const kind=S.view==='proc'&&hasProc?'proc':'image';
   const img=$('#pimg');
-  const src=fileUrl(S.doc.id,kind,S.page,p.result?.at||0);
+  const src=fileUrl(S.doc.id,kind,S.page,`${p.rev||0}_${p.result?.at||0}`);
   if(img.dataset.src!==src){img.dataset.src=src;img.onload=()=>{img.dataset.w=img.naturalWidth;img.dataset.h=img.naturalHeight;applyZoom()};img.src=src}else applyZoom();
   const pre=p.result?.pre;
   if(kind==='image'&&pre&&(pre.skew||pre.rotate)&&S.boxes&&p.result.lines?.some(l=>l.box))
@@ -858,20 +864,20 @@ async function runOcr(indices){
   if(!S.doc||S.running||!indices.length)return;
   if(S.set.engine==='ollama'&&!S.set.vlm){toast('AI 비전 모델을 선택하세요',true);return}
   const doc=S.doc,multi=indices.length>1;  // 실행 중 다른 문서를 열어도 이 문서만 처리
-  S.stop=false;setRunning(true,0);let done=0,fails=0;
+  S.stop=false;setRunning(true,0);let done=0,fails=0,rotN=0;
   for(const i of indices){
     if(S.stop)break;
     const here=()=>S.doc&&S.doc.id===doc.id;
     if(multi&&here()){S.page=i;S.sel=-1;S.view='image';renderThumbs();renderViewer();renderText();$(`#thumbs .th[data-i="${i}"]`)?.scrollIntoView({block:'nearest',behavior:'smooth'})}
     if(here())setThumbRunning(i);
     $('#runPage').innerHTML=ic('loader','spin')+(multi?`인식 중 ${done+1}/${indices.length}`:'인식 중…');
-    try{const pg=await api(`/api/docs/${doc.id}/ocr`,{json:ocrPayload(i)});doc.pages[i]=pg;if(here())S.doc.pages[i]=pg}
+    try{const pg=await api(`/api/docs/${doc.id}/ocr`,{json:ocrPayload(i)});doc.pages[i]=pg;if(here())S.doc.pages[i]=pg;if(pg.result?.pre?.rotate_fixed)rotN++}
     catch(e){fails++;if(fails<=3)toast(`${i+1}페이지: ${e.message}`,true)}
     done++;setRunning(true,done/indices.length);
     if(here()){if(i===S.page){S.view='proc';S.sel=-1;renderViewer();renderText()}renderThumbs()}
   }
   setRunning(false);
-  toast((S.stop?'중지했습니다 · ':'')+(multi?`${done-fails}페이지 인식 완료`:'인식 완료')+(fails?` · 실패 ${fails}페이지`:''),!!fails&&!done);
+  toast((S.stop?'중지했습니다 · ':'')+(multi?`${done-fails}페이지 인식 완료`:'인식 완료')+(fails?` · 실패 ${fails}페이지`:'')+(rotN?` · 돌아간 ${rotN}쪽 바로 세움`:''),!!fails&&!done);
   if(S.doc&&S.doc.id===doc.id){renderAll();if(S.set.tpl&&!S.doc.fields?.edited)await ensureFields(true)}
   loadDocs();
 }
@@ -1407,6 +1413,10 @@ function bind(){
   addEventListener('dragover',e=>e.preventDefault());
   addEventListener('drop',async e=>{e.preventDefault();dc=0;$('#dropAll').classList.remove('on');const items=normItems(await itemsFromDrop(e.dataTransfer));if(!items.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);upload2(items)});
   $('#pPrev').onclick=()=>gotoPage(S.page-1);$('#pNext').onclick=()=>gotoPage(S.page+1);
+  const rot=async(deg,all)=>{if(!S.doc||S.running)return;const pages=all?S.doc.pages.map((_,i)=>i):[S.page];
+    if(pages.some(i=>S.doc.pages[i].result)&&!confirm(`${all?'모든 쪽':'이 페이지'}을 돌리면 인식 결과가 지워집니다. 돌린 뒤 다시 인식하세요. 계속할까요?`))return;
+    try{S.doc=await api(`/api/docs/${S.doc.id}/rotate`,{json:{pages,deg}});S.view='image';hideSel();renderAll();renderFields();loadDocs();toast(all?`${pages.length}쪽을 돌렸습니다`:'돌렸습니다')}catch(e){toast(e.message,true)}};
+  $('#rotL').onclick=e=>rot(270,e.shiftKey);$('#rotR').onclick=e=>rot(90,e.shiftKey);
   $('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=()=>{S.zoom=null;applyZoom()};
   $('#viewer').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1)}},{passive:false});
   // 드래그로 이동

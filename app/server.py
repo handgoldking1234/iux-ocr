@@ -149,6 +149,11 @@ def ingest_files(items: list[tuple[Path, str]], doc_name: str, existing: dict | 
                 frames = [f.copy() for f in ImageSequence.Iterator(im)] if ext in (".tif", ".tiff") else [im]
                 dpi_info = im.info.get("dpi")
                 for fr in frames:
+                    try:  # 휴대폰·스캐너 사진의 회전 정보(EXIF) 반영
+                        from PIL import ImageOps
+                        fr = ImageOps.exif_transpose(fr)
+                    except Exception:  # noqa: BLE001
+                        pass
                     if fr.mode not in ("RGB", "L"):
                         fr = fr.convert("RGB")
                     dpi = round(float(dpi_info[0])) if dpi_info and float(dpi_info[0]) >= 72 else 300
@@ -174,11 +179,34 @@ def ingest_files(items: list[tuple[Path, str]], doc_name: str, existing: dict | 
     return doc
 
 
+def rotate_page(doc: dict, idx: int, deg: int) -> dict:
+    """페이지 이미지를 시계 방향으로 deg(90/180/270)만큼 돌려 저장. 인식 결과는 지운다."""
+    import cv2 as _cv
+    d = DOCS / doc["id"]
+    p = doc["pages"][idx]
+    code = {90: _cv.ROTATE_90_CLOCKWISE, 180: _cv.ROTATE_180, 270: _cv.ROTATE_90_COUNTERCLOCKWISE}.get(deg % 360)
+    if code is None:
+        return p
+    img = _cv.rotate(preprocess.load_bgr(str(d / p["file"])), code)
+    preprocess.save_png(str(d / p["file"]), img)
+    p["height"], p["width"] = img.shape[:2]
+    p["rev"] = p.get("rev", 0) + 1
+    _thumb(d / p["file"], d / p["thumb"])
+    (d / p["proc"]).unlink(missing_ok=True)
+    p["result"] = None
+    p.pop("pdf_text", None)
+    return p
+
+
 def ocr_page(doc: dict, idx: int, engine: str, lang: str, psm: int, model: str | None, pre: dict | None, fix_spacing: bool = True) -> dict:
     d = DOCS / doc["id"]
     p = doc["pages"][idx]
     color = preprocess.load_bgr(str(d / p["file"]))
     gray, info = preprocess.preprocess(color, pre)
+    if info.get("rotate"):  # 돌아간 페이지를 찾았으면 원본도 바로 세워서 저장 (화면·썸네일도 똑바로)
+        rotate_page(doc, idx, info["rotate"])
+        color = preprocess.load_bgr(str(d / p["file"]))
+        info["rotate_fixed"] = info.pop("rotate")
     preprocess.save_png(str(d / p["proc"]), gray)
     res = engines.run_engine(engine, gray, color, lang, psm, model, fix_spacing)
     res["pre"] = info
@@ -208,6 +236,11 @@ class RegionReq(BaseModel):
     engine: str = "tesseract"
     lang: str = "kor+eng"
     model: str | None = None
+
+
+class RotateReq(BaseModel):
+    pages: list[int]
+    deg: int = 90
 
 
 class FieldsUpdate(BaseModel):
@@ -423,6 +456,17 @@ def api_ocr(doc_id: str, req: OcrReq):
         fresh["pages"][req.page] = page
         save_doc(fresh)
     return page
+
+
+@app.post("/api/docs/{doc_id}/rotate")
+def api_rotate(doc_id: str, req: RotateReq):
+    with _lock:
+        doc = load_doc(doc_id)
+        for i in req.pages:
+            if 0 <= i < len(doc["pages"]):
+                rotate_page(doc, i, req.deg)
+        save_doc(doc)
+    return doc
 
 
 @app.post("/api/docs/{doc_id}/ocr-region")

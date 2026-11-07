@@ -61,7 +61,7 @@
   const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
   const toBlob = (c, type = 'image/png', q) => new Promise(r => c.toBlob(r, type, q));
   async function blobToCanvas(blob) {
-    const bmp = await createImageBitmap(blob);
+    let bmp; try { bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' }); } catch (e) { bmp = await createImageBitmap(blob); } /* EXIF 회전 반영 */
     const c = canvas(bmp.width, bmp.height);
     c.getContext('2d').drawImage(bmp, 0, 0);
     bmp.close && bmp.close();
@@ -218,10 +218,45 @@
     });
     return workers[lang];
   }
+  /* 90/180/270도 돌아간 페이지 감지 (Tesseract OSD) */
+  let osdW = null;
+  async function osdWorker() {
+    if (!window.Tesseract) await loadScript(BASE + 'tesseract.min.js');
+    if (!osdW) osdW = Tesseract.createWorker('osd', 0, { workerPath: BASE + 'worker.min.js', corePath: BASE + 'core/', langPath: BASE + 'lang', gzip: true, legacyCore: true, legacyLang: true });
+    return osdW;
+  }
+  async function detectRotation(c) {
+    const s = Math.min(1, 1600 / Math.max(c.width, c.height)), sm = canvas(Math.round(c.width * s), Math.round(c.height * s));
+    sm.getContext('2d').drawImage(c, 0, 0, sm.width, sm.height);
+    try { const { data } = await (await osdWorker()).detect(sm); return data.orientation_confidence > 1.5 ? (data.orientation_degrees || 0) : 0; }
+    catch (e) { console.warn('방향 감지 실패', e); return 0; }
+  }
+  function rotateCw(c, deg) {
+    deg = ((deg % 360) + 360) % 360; if (!deg) return c;
+    const sw = deg % 180 !== 0, r = canvas(sw ? c.height : c.width, sw ? c.width : c.height), x = r.getContext('2d');
+    x.translate(r.width / 2, r.height / 2); x.rotate(deg * Math.PI / 180); x.drawImage(c, -c.width / 2, -c.height / 2);
+    return r;
+  }
+  async function rotateStored(doc, idx, deg) {
+    const p = doc.pages[idx];
+    const c = rotateCw(await blobToCanvas(await getBlob(`${doc.id}/image/${idx}`)), deg);
+    await setBlob(doc.id, 'image', idx, await toBlob(c, 'image/jpeg', 0.92));
+    await setBlob(doc.id, 'thumb', idx, await thumbOf(c));
+    await tx('blobs', 'readwrite', s => s.delete(`${doc.id}/proc/${idx}`));
+    const k = `${doc.id}/proc/${idx}`; if (URLS[k]) { URL.revokeObjectURL(URLS[k]); delete URLS[k]; }
+    p.width = c.width; p.height = c.height; p.result = null; delete p.pdf_text;
+    return c;
+  }
   async function runOcr(doc, idx, req) {
     const t0 = performance.now(), p = doc.pages[idx];
-    const src = await blobToCanvas(await getBlob(`${doc.id}/image/${idx}`));
+    let src = await blobToCanvas(await getBlob(`${doc.id}/image/${idx}`));
+    let rotated = 0;
+    if ((req.pre || {}).orient !== false) {
+      const deg = await detectRotation(src);
+      if (deg) { src = await rotateStored(doc, idx, deg); rotated = deg; }
+    }
     const { canvas: pc, info } = preprocess(src, req.pre || {});
+    if (rotated) info.rotate_fixed = rotated;
     await setBlob(doc.id, 'proc', idx, await toBlob(pc, 'image/jpeg', 0.9));
     const lang = ['kor+eng', 'kor', 'eng'].includes(req.lang) ? req.lang : 'kor+eng';
     const w = await worker(lang);
@@ -327,6 +362,11 @@
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/ocr$/))) {
       const d = await getDoc(m[1]); const pg = await runOcr(d, body.page, body);
       const fresh = await getDoc(m[1]); fresh.pages[body.page] = pg; await putDoc(fresh); return pg;
+    }
+    if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/rotate$/))) {
+      const d = await getDoc(m[1]);
+      for (const i of body.pages) if (d.pages[i]) await rotateStored(d, i, body.deg);
+      await putDoc(d); return d;
     }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/ocr-region$/))) {
       const d = await getDoc(m[1]), i = body.page;

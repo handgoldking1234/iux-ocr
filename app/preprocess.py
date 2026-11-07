@@ -6,7 +6,7 @@ import numpy as np
 
 DEFAULT_OPTS = {
     "deskew": True,      # 기울기 자동 보정
-    "orient": False,     # 90/180도 회전 자동 감지 (Tesseract OSD 필요)
+    "orient": True,      # 90/180/270도 돌아간 페이지 자동 감지 (Tesseract OSD)
     "contrast": True,    # 대비 향상 (CLAHE)
     "denoise": False,    # 노이즈 제거 (느림)
     "binarize": False,   # 흑백 이진화
