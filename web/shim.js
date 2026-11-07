@@ -98,8 +98,9 @@
   const uid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => b.toString(16).padStart(2, '0')).join('');
 
   async function ingest(file) { return ingestMany([file], file.name); }
-  async function ingestMany(files, docName) {
-    const id = uid(), pages = [];
+  async function ingestMany(files, docName, existing) {
+    const id = existing ? existing.id : uid(), pages = existing ? existing.pages : [];
+    const start = pages.length;
     let name = '';
     const addPage = async (c, _i, extra = {}) => {
       const i = pages.length;
@@ -108,9 +109,10 @@
       pages.push({ index: i, file: 'image', proc: 'proc', thumb: 'thumb', width: c.width, height: c.height, dpi: extra.dpi || 300, result: extra.result || null, source: name, ...(extra.pdf_text ? { pdf_text: true } : {}) });
     };
     try { for (const file of files) { name = file.name; await addFile(file); } }
-    catch (e) { await delDoc(id); throw e; }
-    const doc = { id, name: docName, created: Date.now() / 1000, pages };
-    if (files.length > 1) doc.files = files.map(f => f.name);
+    catch (e) { if (existing) pages.splice(start); else await delDoc(id); throw e; }
+    const doc = existing || { id, name: docName, created: Date.now() / 1000, pages };
+    if (existing) doc.files = (doc.files || []).concat(files.map(f => f.name));
+    else if (files.length > 1) doc.files = files.map(f => f.name);
     await putDoc(doc);
     return doc;
 
@@ -309,6 +311,7 @@
     }
     if (p === '/api/upload') {
       const files = opt.body.getAll('files'), out = [];
+      if (opt.body.get('append_to') && files.length) { const ex = await getDoc(opt.body.get('append_to')); out.push(await ingestMany(files, '', ex)); await loadUrls(ex); return out; }
       if (opt.body.get('merge') === '1' && files.length) { out.push(await ingestMany(files, opt.body.get('doc_name') || files[0].name)); return out; }
       for (const f of files) out.push(await ingest(f));
       return out;

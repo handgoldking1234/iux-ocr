@@ -821,23 +821,33 @@ function ocrPayload(page){return{page,engine:S.set.engine,lang:S.set.lang,psm:+S
 function setRunning(on,frac){S.running=on;$('#runPage').disabled=on||!S.doc;$('#runAll').disabled=on||!S.doc;$('#runStop').hidden=!on;$('#prog').classList.toggle('show',on);$('#prog i').style.width=((frac||0)*100)+'%';
   $('#runPage').innerHTML=(on?ic('loader','spin'):ic('play'))+(on?'인식 중…':'이 페이지 인식');}
 async function runOcr(indices){
-  if(!S.doc||S.running)return;
+  if(!S.doc||S.running||!indices.length)return;
   if(S.set.engine==='ollama'&&!S.set.vlm){toast('AI 비전 모델을 선택하세요',true);return}
+  const doc=S.doc,multi=indices.length>1;  // 실행 중 다른 문서를 열어도 이 문서만 처리
   S.stop=false;setRunning(true,0);let done=0,fails=0;
   for(const i of indices){
     if(S.stop)break;
-    setThumbRunning(i);
-    try{const pg=await api(`/api/docs/${S.doc.id}/ocr`,{json:ocrPayload(i)});S.doc.pages[i]=pg;}
-    catch(e){fails++;toast(`${i+1}페이지: ${e.message}`,true)}
+    const here=()=>S.doc&&S.doc.id===doc.id;
+    if(multi&&here()){S.page=i;S.sel=-1;S.view='image';renderThumbs();renderViewer();renderText();$(`#thumbs .th[data-i="${i}"]`)?.scrollIntoView({block:'nearest',behavior:'smooth'})}
+    if(here())setThumbRunning(i);
+    $('#runPage').innerHTML=ic('loader','spin')+(multi?`인식 중 ${done+1}/${indices.length}`:'인식 중…');
+    try{const pg=await api(`/api/docs/${doc.id}/ocr`,{json:ocrPayload(i)});doc.pages[i]=pg;if(here())S.doc.pages[i]=pg}
+    catch(e){fails++;if(fails<=3)toast(`${i+1}페이지: ${e.message}`,true)}
     done++;setRunning(true,done/indices.length);
-    if(i===S.page){S.view='proc';S.sel=-1;renderViewer();renderText()}
-    renderThumbs();
+    if(here()){if(i===S.page){S.view='proc';S.sel=-1;renderViewer();renderText()}renderThumbs()}
   }
   setRunning(false);
-  if(!fails)toast(indices.length>1?`${done}페이지 인식 완료`:'인식 완료');
-  renderAll();
-  if(S.set.tpl&&S.doc&&!S.doc.fields?.edited)await ensureFields(true);
+  toast((S.stop?'중지했습니다 · ':'')+(multi?`${done-fails}페이지 인식 완료`:'인식 완료')+(fails?` · 실패 ${fails}페이지`:''),!!fails&&!done);
+  if(S.doc&&S.doc.id===doc.id){renderAll();if(S.set.tpl&&!S.doc.fields?.edited)await ensureFields(true)}
   loadDocs();
+}
+function runAllPages(){
+  if(!S.doc)return;
+  const todo=S.doc.pages.map((_,i)=>i).filter(i=>!S.doc.pages[i].result);
+  if(todo.length)return runOcr(todo);
+  const redo=S.doc.pages.map((_,i)=>i).filter(i=>S.doc.pages[i].result?.engine!=='pdf-text');
+  if(!redo.length)return toast('PDF에 들어 있는 글자를 그대로 쓰고 있어 인식할 페이지가 없습니다');
+  if(confirm(`모든 페이지(${redo.length}쪽)가 이미 인식되어 있습니다. 처음부터 다시 인식할까요?`))runOcr(redo);
 }
 
 /* ---------- 재가공 ---------- */
@@ -1135,25 +1145,39 @@ async function upload(files){upload2(normItems([...files].map(f=>({file:f,path:f
 async function upload2(items,opts={}){
   if(!items.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);
   const hasDirs=items.some(x=>x.path.includes('/'));
-  if(hasDirs&&!opts.mode)return askFolder(items);
+  if(hasDirs&&!opts.mode)opts.mode='folder';
   // 묶음 만들기: folder 모드면 폴더별, 아니면 파일별
   const groups=[];
   if(opts.mode==='folder'){const m=new Map();for(const x of items){const k=dirOf(x.path)||'(최상위)';if(!m.has(k))m.set(k,[]);m.get(k).push(x)}for(const[k,v]of m)groups.push({name:k.split('/').pop()||k,items:v,merge:true})}
   else items.forEach(x=>groups.push({name:x.file.name,items:[x],merge:false}));
-  const bar=$('#upbar');bar.hidden=false;const total=groups.length;let done=0;const ids=[];
+  const bar=$('#upbar');bar.hidden=false;const total=items.length;let done=0;const ids=[];
   const t=document.createElement('div');t.className='toast';$('#toasts').append(t);
-  const tick=()=>{t.innerHTML=ic('loader','spin')+`<span>문서 추가 중 ${done}/${total}</span>`;bar.firstElementChild.style.width=(done/total*100)+'%'};tick();
+  const tick=()=>{t.innerHTML=ic('loader','spin')+`<span>파일 불러오는 중 ${done}/${total}</span>`;bar.firstElementChild.style.width=(done/total*100)+'%'};tick();
   try{
     for(const g of groups){
-      const fd=new FormData();g.items.forEach(x=>fd.append('files',x.file,x.file.name));
-      if(g.merge){fd.append('merge','1');fd.append('doc_name',g.name)}
-      try{const docs=await api('/api/upload',{method:'POST',body:fd});docs.forEach(d=>ids.push(d.id))}
-      catch(e){toast(`${g.name}: ${e.message}`,true)}
-      done++;tick();
-      if(done%5===0)loadDocs();
+      if(g.merge){ // 폴더 = 문서 하나. 파일을 한 장씩 이어 붙여 쪽이 바로바로 보이게
+        let docId=null;
+        for(const x of g.items){
+          const fd=new FormData();fd.append('files',x.file,x.file.name);
+          if(docId)fd.append('append_to',docId);else{fd.append('merge','1');fd.append('doc_name',g.name)}
+          try{
+            const docs=await api('/api/upload',{method:'POST',body:fd});
+            if(!docId){docId=docs[0].id;ids.push(docId);if(ids.length===1)await loadDocs(docId);else loadDocs()}
+            else if(S.doc?.id===docId&&!S.running){S.doc.pages=docs[0].pages;S.doc.files=docs[0].files;renderThumbs()}
+          }catch(e){toast(`${x.file.name}: ${e.message}`,true)}
+          done++;tick();
+        }
+        loadDocs();
+      }else{
+        const fd=new FormData();g.items.forEach(x=>fd.append('files',x.file,x.file.name));
+        try{const docs=await api('/api/upload',{method:'POST',body:fd});docs.forEach(d=>ids.push(d.id));if(ids.length===1)await loadDocs(ids[0])}
+        catch(e){toast(`${g.name}: ${e.message}`,true)}
+        done+=g.items.length;tick();
+        if(ids.length%5===0)loadDocs();
+      }
     }
-    await loadDocs(ids[0]);
-    toast(`${ids.length}개 문서를 추가했습니다`+(opts.mode==='folder'?` (${items.length}개 파일)`:''));
+    await loadDocs();if(!S.doc&&ids[0])await openDoc(ids[0]);
+    toast(opts.mode==='folder'?`파일 ${items.length}개를 불러왔습니다 (문서 ${ids.length}개) — '전체 페이지 인식'으로 차례대로 인식하세요`:`${ids.length}개 문서를 추가했습니다`);
     if(opts.ocr&&ids.length)runDocs(ids);
   }finally{t.remove();bar.hidden=true;bar.firstElementChild.style.width='0'}
 }
@@ -1221,7 +1245,7 @@ function bind(){
   $('#addFiles').onclick=()=>$('#file').click();
   $('#addFolder').onclick=()=>$('#folder').click();
   $('#file').onchange=e=>{upload(e.target.files);e.target.value=''};
-  $('#folder').onchange=e=>{const items=normItems([...e.target.files].map(f=>({file:f,path:f.webkitRelativePath||f.name})));e.target.value='';if(!items.length)return toast('폴더에 이미지·PDF가 없습니다',true);askFolder(items)};
+  $('#folder').onchange=e=>{const items=normItems([...e.target.files].map(f=>({file:f,path:f.webkitRelativePath||f.name})));e.target.value='';if(!items.length)return toast('폴더에 이미지·PDF가 없습니다',true);upload2(items,{mode:'folder'})};
   $('#fdGo').onclick=()=>{const mode=$('input[name=fdMode]:checked').value,ocr=$('#fdOcr').checked;$('#mFolder').classList.remove('on');const it=pendingFolder;pendingFolder=null;if(it)upload2(it,{mode,ocr})};
   $('#ocrAllDocs').onclick=()=>runDocs(S.docs.filter(d=>d.done<d.pages).map(d=>d.id));
   $('#delAllDocs').onclick=async()=>{if(!S.docs.length)return;if(!confirm(`작업 목록의 문서 ${S.docs.length}개를 모두 지울까요? (원본 파일은 그대로입니다)`))return;for(const d of S.docs)await api('/api/docs/'+d.id,{method:'DELETE'});S.doc=null;renderAll();renderFields();loadDocs();toast('목록을 비웠습니다')};
@@ -1247,7 +1271,7 @@ function bind(){
   $('#psmSel').onchange=e=>{S.set.psm=e.target.value;saveSet()};
   $$('#preChips .chip').forEach(c=>c.onclick=()=>{S.set.pre[c.dataset.k]=!S.set.pre[c.dataset.k];saveSet();renderSettings()});
   $('#runPage').onclick=()=>runOcr([S.page]);
-  $('#runAll').onclick=()=>runOcr(S.doc.pages.map((_,i)=>i).filter(i=>!S.doc.pages[i].result||S.doc.pages[i].result.engine!=='pdf-text'));
+  $('#runAll').onclick=runAllPages;
   $('#runStop').onclick=()=>{S.stop=true;toast('현재 페이지까지만 처리하고 멈춥니다')};
   $$('#tabs button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;$$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.t));if(S.tab==='fields')ensureFields()});
   $$('#scopeSeg button').forEach(b=>b.onclick=()=>{S.scope=b.dataset.s;$$('#scopeSeg button').forEach(x=>x.classList.toggle('on',x===b))});

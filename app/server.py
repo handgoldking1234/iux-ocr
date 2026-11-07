@@ -96,13 +96,20 @@ def ingest_file(src: Path, name: str) -> dict:
     return ingest_files([(src, name)], name)
 
 
-def ingest_files(items: list[tuple[Path, str]], doc_name: str) -> dict:
-    """여러 이미지/PDF를 한 문서(여러 쪽)로 등록 (페이지별 PNG + 썸네일). 폴더 단위 기록물용."""
-    doc_id = uuid.uuid4().hex[:12]
-    d = DOCS / doc_id
-    (d / "pages").mkdir(parents=True)
-    (d / "thumbs").mkdir()
-    pages: list[dict] = []
+def ingest_files(items: list[tuple[Path, str]], doc_name: str, existing: dict | None = None) -> dict:
+    """여러 이미지/PDF를 한 문서(여러 쪽)로 등록 (페이지별 PNG + 썸네일). 폴더 단위 기록물용.
+    existing 을 주면 그 문서 뒤에 쪽을 이어 붙인다."""
+    if existing:
+        doc_id = existing["id"]
+        d = DOCS / doc_id
+        pages: list[dict] = existing["pages"]
+    else:
+        doc_id = uuid.uuid4().hex[:12]
+        d = DOCS / doc_id
+        (d / "pages").mkdir(parents=True)
+        (d / "thumbs").mkdir()
+        pages = []
+    start_len = len(pages)
 
     def new_page(img, dpi: int, source: str) -> dict:
         i = len(pages)
@@ -149,12 +156,20 @@ def ingest_files(items: list[tuple[Path, str]], doc_name: str) -> dict:
             else:
                 raise HTTPException(400, f"지원하지 않는 파일 형식입니다: {name}")
     except Exception:
-        shutil.rmtree(d, ignore_errors=True)
+        if existing:
+            del pages[start_len:]
+        else:
+            shutil.rmtree(d, ignore_errors=True)
         raise
 
-    doc = {"id": doc_id, "name": doc_name, "created": time.time(), "pages": pages}
-    if len(items) > 1:
-        doc["files"] = [n for _, n in items]
+    if existing:
+        doc = existing
+        doc.setdefault("files", [])
+        doc["files"] += [n for _, n in items]
+    else:
+        doc = {"id": doc_id, "name": doc_name, "created": time.time(), "pages": pages}
+        if len(items) > 1:
+            doc["files"] = [n for _, n in items]
     save_doc(doc)
     return doc
 
@@ -312,8 +327,8 @@ def _sniff_ext(path: Path) -> str | None:
 
 
 @app.post("/api/upload")
-async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""), doc_name: str = Form("")):
-    """merge=1 이면 받은 파일 전체를 한 문서(여러 쪽)로, 아니면 파일마다 문서."""
+async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""), doc_name: str = Form(""), append_to: str = Form("")):
+    """merge=1 이면 받은 파일 전체를 한 문서(여러 쪽)로, append_to=문서ID 면 그 문서 뒤에 쪽 추가, 아니면 파일마다 문서."""
     tmp = WS / "tmp"
     tmp.mkdir(exist_ok=True)
     docs = []
@@ -332,7 +347,10 @@ async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""),
                 name = Path(name).stem + ext
         staged.append((t, name))
     try:
-        if merge in ("1", "true") and staged:
+        if append_to and staged:
+            with _lock:
+                docs.append(ingest_files(staged, "", load_doc(append_to)))
+        elif merge in ("1", "true") and staged:
             docs.append(ingest_files(staged, doc_name or staged[0][1]))
         else:
             for t, name in staged:
