@@ -97,14 +97,25 @@
   }
   const uid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => b.toString(16).padStart(2, '0')).join('');
 
-  async function ingest(file) {
-    const id = uid(), name = file.name, pages = [];
-    const ext = (name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
-    const addPage = async (c, i, extra = {}) => {
+  async function ingest(file) { return ingestMany([file], file.name); }
+  async function ingestMany(files, docName) {
+    const id = uid(), pages = [];
+    let name = '';
+    const addPage = async (c, _i, extra = {}) => {
+      const i = pages.length;
       await setBlob(id, 'image', i, await toBlob(c));
       await setBlob(id, 'thumb', i, await thumbOf(c));
-      pages.push({ index: i, file: 'image', proc: 'proc', thumb: 'thumb', width: c.width, height: c.height, dpi: extra.dpi || 300, result: extra.result || null, ...(extra.pdf_text ? { pdf_text: true } : {}) });
+      pages.push({ index: i, file: 'image', proc: 'proc', thumb: 'thumb', width: c.width, height: c.height, dpi: extra.dpi || 300, result: extra.result || null, source: name, ...(extra.pdf_text ? { pdf_text: true } : {}) });
     };
+    try { for (const file of files) { name = file.name; await addFile(file); } }
+    catch (e) { await delDoc(id); throw e; }
+    const doc = { id, name: docName, created: Date.now() / 1000, pages };
+    if (files.length > 1) doc.files = files.map(f => f.name);
+    await putDoc(doc);
+    return doc;
+
+    async function addFile(file) {
+    const ext = (file.name.match(/\.[^.]+$/) || [''])[0].toLowerCase();
     if (ext === '.pdf') {
       const lib = await loadPdfjs();
       const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
@@ -130,10 +141,8 @@
       for (let i = 0; i < cs.length; i++) await addPage(cs[i], i);
     } else if (/^\.(png|jpe?g|bmp|webp|gif)$/.test(ext)) {
       await addPage(await blobToCanvas(file), 0);
-    } else throw new Error('지원하지 않는 파일 형식입니다: ' + name);
-    const doc = { id, name, created: Date.now() / 1000, pages };
-    await putDoc(doc);
-    return doc;
+    } else throw new Error('지원하지 않는 파일 형식입니다: ' + file.name);
+    }
   }
 
   /* ---------------- 전처리 (app/preprocess.py 와 같은 흐름) ---------------- */
@@ -300,6 +309,7 @@
     }
     if (p === '/api/upload') {
       const files = opt.body.getAll('files'), out = [];
+      if (opt.body.get('merge') === '1' && files.length) { out.push(await ingestMany(files, opt.body.get('doc_name') || files[0].name)); return out; }
       for (const f of files) out.push(await ingest(f));
       return out;
     }

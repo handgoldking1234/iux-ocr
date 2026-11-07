@@ -58,6 +58,17 @@ a.btn{text-decoration:none;color:inherit}
 /* layout */
 main{display:grid;grid-template-columns:260px 1fr 440px;min-height:0}
 aside.left{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.drop .btns{display:flex;gap:6px;margin-top:10px}
+.drop .btns .btn{flex:1;height:30px;font-size:12px}
+.upbar{margin:8px 0 0;height:4px;border-radius:4px;background:var(--line);overflow:hidden}
+.upbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.sec-h .acts{display:flex;gap:2px;align-items:center}
+.sec-h .acts .btn{height:22px;padding:0 6px;font-size:11px;text-transform:none;letter-spacing:0}
+.choice{display:flex;flex-direction:column;gap:8px}
+.choice label{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:12px;cursor:pointer}
+.choice label:has(input:checked){border-color:var(--accent);background:var(--accent-2)}
+.choice b{display:block;font-size:13px}.choice small{color:var(--text-3);font-size:11.5px;line-height:1.5}
+.fltree{max-height:160px;overflow:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.7;color:var(--text-2)}
 .drop{margin:12px;border:1.5px dashed var(--line-2);border-radius:var(--radius);padding:16px 12px;text-align:center;color:var(--text-2);cursor:pointer;transition:.15s;background:var(--panel-2)}
 .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-2);color:var(--accent-ink)}
 .drop svg{width:22px;height:22px;margin-bottom:6px}
@@ -287,10 +298,13 @@ table.fields td[contenteditable]{outline:none}
     <aside class="left">
       <div class="drop" id="drop">
         <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-        <b>파일 추가</b><small>이미지 · PDF · TIFF를 끌어다 놓기</small>
+        <b>여기에 끌어다 놓기</b><small>이미지 · PDF · TIFF · 폴더째로도 가능</small>
+        <div class="btns"><button class="btn" id="addFiles" data-ic="file">파일 추가</button><button class="btn" id="addFolder" data-ic="folder">폴더 추가</button></div>
+        <div class="upbar" id="upbar" hidden><i></i></div>
         <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf" hidden>
+        <input type="file" id="folder" webkitdirectory directory multiple hidden>
       </div>
-      <div class="sec-h"><span>문서</span><span id="docCount"></span></div>
+      <div class="sec-h"><span>문서 <span id="docCount"></span></span><span class="acts"><button class="btn ghost" id="ocrAllDocs" title="인식 안 한 모든 문서·페이지를 차례로 인식">모두 인식</button><button class="btn ghost" id="delAllDocs" title="작업 목록 비우기">비우기</button></span></div>
       <div class="docs" id="docs"></div>
       <div class="sec-h" style="border-top:1px solid var(--line);padding-top:10px"><span>페이지</span><span id="pageCount"></span></div>
       <div class="thumbs" id="thumbs"></div>
@@ -449,6 +463,23 @@ table.fields td[contenteditable]{outline:none}
       </div>
     </aside>
   </main>
+</div>
+
+<!-- 폴더 추가 방식 -->
+<div class="modal" id="mFolder">
+  <div class="mbox" style="width:520px">
+    <div class="mh"><span data-ic="folder"></span><h3>폴더 추가</h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
+    <div class="mb">
+      <div id="fdSummary" class="muted"></div>
+      <div class="fltree" id="fdTree"></div>
+      <div class="choice">
+        <label><input type="radio" name="fdMode" value="folder" checked><span><b>폴더마다 문서 하나</b><small>한 폴더 = 기록물 한 건. 폴더 안 이미지를 파일 이름 순서대로 여러 쪽으로 묶습니다.</small></span></label>
+        <label><input type="radio" name="fdMode" value="each"><span><b>파일마다 문서 하나</b><small>이미지·PDF 하나하나를 각각 다른 문서로 추가합니다.</small></span></label>
+      </div>
+      <label class="ck"><input type="checkbox" id="fdOcr" checked>추가한 뒤 바로 전부 인식</label>
+    </div>
+    <div class="mf"><button class="btn" data-close>취소</button><button class="btn primary" id="fdGo" data-ic="check">추가</button></div>
+  </div>
 </div>
 
 <!-- 일괄 처리 -->
@@ -690,7 +721,7 @@ function renderThumbs(){
   $('#thumbs').innerHTML=S.doc.pages.map((p,i)=>{
     const r=p.result;let st='';
     if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':'AI')}</span>`}
-    return `<div class="th ${i===S.page?'on':''}" data-i="${i}"><img loading="lazy" src="${fileUrl(S.doc.id,'thumb',i)}"><span class="no">${i+1}</span>${st}</div>`}).join('');
+    return `<div class="th ${i===S.page?'on':''}" data-i="${i}" title="${esc(p.source||'')}"><img loading="lazy" src="${fileUrl(S.doc.id,'thumb',i)}"><span class="no">${i+1}</span>${st}</div>`}).join('');
   $$('#thumbs .th').forEach(el=>el.onclick=()=>gotoPage(+el.dataset.i));
 }
 function setThumbRunning(i){const el=$(`#thumbs .th[data-i="${i}"]`);if(!el)return;el.querySelector('.st')?.remove();el.insertAdjacentHTML('beforeend','<span class="st run">…</span>')}
@@ -1091,13 +1122,78 @@ async function pollBatch(){
 }
 
 /* ---------- 업로드 ---------- */
-async function upload(files){
-  files=[...files].filter(f=>/\.(png|jpe?g|tiff?|bmp|webp|gif|pdf)$/i.test(f.name));
-  if(!files.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);
-  const fd=new FormData();files.forEach(f=>fd.append('files',f));
-  const t=document.createElement('div');t.className='toast';t.innerHTML=ic('loader','spin')+`<span>${files.length}개 파일을 불러오는 중…</span>`;$('#toasts').append(t);
-  try{const docs=await api('/api/upload',{method:'POST',body:fd});await loadDocs(docs[0]?.id);toast(`${docs.length}개 문서를 추가했습니다`)}
-  catch(e){toast(e.message,true)}finally{t.remove()}
+const OK_EXT=/\.(png|jpe?g|tiff?|bmp|webp|gif|pdf)$/i;
+const natCmp=(a,b)=>a.localeCompare(b,'ko',{numeric:true,sensitivity:'base'});
+/* items: [{file, path}] — path는 폴더 기준 상대 경로 ('폴더/하위/파일.jpg') */
+function normItems(items){return items.filter(x=>OK_EXT.test(x.file.name)&&!/(^|\/)\./.test(x.path)).sort((a,b)=>natCmp(a.path,b.path))}
+function dirOf(p){const i=p.lastIndexOf('/');return i<0?'':p.slice(0,i)}
+async function upload(files){upload2(normItems([...files].map(f=>({file:f,path:f.webkitRelativePath||f.name}))))}
+async function upload2(items,opts={}){
+  if(!items.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);
+  const hasDirs=items.some(x=>x.path.includes('/'));
+  if(hasDirs&&!opts.mode)return askFolder(items);
+  // 묶음 만들기: folder 모드면 폴더별, 아니면 파일별
+  const groups=[];
+  if(opts.mode==='folder'){const m=new Map();for(const x of items){const k=dirOf(x.path)||'(최상위)';if(!m.has(k))m.set(k,[]);m.get(k).push(x)}for(const[k,v]of m)groups.push({name:k.split('/').pop()||k,items:v,merge:true})}
+  else items.forEach(x=>groups.push({name:x.file.name,items:[x],merge:false}));
+  const bar=$('#upbar');bar.hidden=false;const total=groups.length;let done=0;const ids=[];
+  const t=document.createElement('div');t.className='toast';$('#toasts').append(t);
+  const tick=()=>{t.innerHTML=ic('loader','spin')+`<span>문서 추가 중 ${done}/${total}</span>`;bar.firstElementChild.style.width=(done/total*100)+'%'};tick();
+  try{
+    for(const g of groups){
+      const fd=new FormData();g.items.forEach(x=>fd.append('files',x.file,x.file.name));
+      if(g.merge){fd.append('merge','1');fd.append('doc_name',g.name)}
+      try{const docs=await api('/api/upload',{method:'POST',body:fd});docs.forEach(d=>ids.push(d.id))}
+      catch(e){toast(`${g.name}: ${e.message}`,true)}
+      done++;tick();
+      if(done%5===0)loadDocs();
+    }
+    await loadDocs(ids[0]);
+    toast(`${ids.length}개 문서를 추가했습니다`+(opts.mode==='folder'?` (${items.length}개 파일)`:''));
+    if(opts.ocr&&ids.length)runDocs(ids);
+  }finally{t.remove();bar.hidden=true;bar.firstElementChild.style.width='0'}
+}
+let pendingFolder=null;
+function askFolder(items){
+  pendingFolder=items;
+  const m=new Map();for(const x of items){const k=dirOf(x.path)||'(최상위)';m.set(k,(m.get(k)||0)+1)}
+  $('#fdSummary').innerHTML=`파일 <b>${items.length}개</b> · 폴더 <b>${m.size}개</b>`;
+  $('#fdTree').innerHTML=[...m].slice(0,200).map(([k,v])=>`${ic('folder')} ${esc(k)} <span class="muted">— ${v}개</span>`).join('<br>')+(m.size>200?`<br>… 외 ${m.size-200}개 폴더`:'');
+  $$('#fdTree svg').forEach(s=>{s.style.width='12px';s.style.height='12px';s.style.verticalAlign='-1px'});
+  $('#mFolder').classList.add('on');
+}
+/* 끌어다 놓은 폴더 안까지 읽기 */
+async function itemsFromDrop(dt){
+  const entries=[...dt.items||[]].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean);
+  if(!entries.length)return [...dt.files].map(f=>({file:f,path:f.name}));
+  const out=[];
+  async function walk(en,prefix){
+    if(en.isFile){const f=await new Promise((res,rej)=>en.file(res,rej));out.push({file:f,path:prefix+f.name});return}
+    if(en.isDirectory){const rd=en.createReader();let batch;do{batch=await new Promise((res,rej)=>rd.readEntries(res,rej));for(const c of batch)await walk(c,prefix+en.name+'/')}while(batch.length)}
+  }
+  for(const en of entries)await walk(en,'');
+  return out;
+}
+/* 여러 문서 한꺼번에 인식 */
+async function runDocs(ids){
+  if(S.running)return toast('이미 인식 중입니다',true);
+  if(S.set.engine==='ollama'&&!S.set.vlm)return toast('AI 비전 모델을 선택하세요',true);
+  const jobs=[];
+  for(const id of ids){const d=await api('/api/docs/'+id);d.pages.forEach((p,i)=>{if(!p.result)jobs.push([id,i])})}
+  if(!jobs.length)return toast('모든 문서가 이미 인식되어 있습니다');
+  S.stop=false;setRunning(true,0);let done=0,fails=0;const touched=new Set();
+  for(const[id,i]of jobs){
+    if(S.stop)break;
+    if(S.doc?.id===id)setThumbRunning(i);
+    try{const pg=await api(`/api/docs/${id}/ocr`,{json:ocrPayload(i)});touched.add(id);if(S.doc?.id===id){S.doc.pages[i]=pg;renderThumbs();if(i===S.page){S.view='proc';renderViewer();renderText()}}}
+    catch(e){fails++;if(fails<=3)toast(`인식 실패: ${e.message}`,true)}
+    done++;setRunning(true,done/jobs.length);$('#runPage').innerHTML=ic('loader','spin')+`인식 중 ${done}/${jobs.length}`;
+    if(done%3===0)loadDocs();
+  }
+  if(S.set.tpl)for(const id of touched){try{const d=await api('/api/docs/'+id);if(!d.fields?.edited)await api(`/api/docs/${id}/autofill`,{json:{template_id:S.set.tpl,model:S.set.llm||null}})}catch(e){}}
+  setRunning(false);await loadDocs();
+  if(S.doc&&touched.has(S.doc.id))await openDoc(S.doc.id,S.page);
+  toast(`${touched.size}개 문서, ${done-fails}쪽 인식 완료`+(fails?` · 실패 ${fails}쪽`:''));
 }
 
 /* ---------- 웹버전 ---------- */
@@ -1117,13 +1213,19 @@ function applyWebMode(){
 function renderAll(){renderThumbs();renderViewer();renderText();renderRefine();setRunning(S.running)}
 function bind(){
   paintIcons();
-  $('#drop').onclick=()=>$('#file').click();
+  $('#drop').onclick=e=>{if(!e.target.closest('button'))$('#file').click()};
+  $('#addFiles').onclick=()=>$('#file').click();
+  $('#addFolder').onclick=()=>$('#folder').click();
   $('#file').onchange=e=>{upload(e.target.files);e.target.value=''};
+  $('#folder').onchange=e=>{const items=normItems([...e.target.files].map(f=>({file:f,path:f.webkitRelativePath||f.name})));e.target.value='';if(!items.length)return toast('폴더에 이미지·PDF가 없습니다',true);askFolder(items)};
+  $('#fdGo').onclick=()=>{const mode=$('input[name=fdMode]:checked').value,ocr=$('#fdOcr').checked;$('#mFolder').classList.remove('on');const it=pendingFolder;pendingFolder=null;if(it)upload2(it,{mode,ocr})};
+  $('#ocrAllDocs').onclick=()=>runDocs(S.docs.filter(d=>d.done<d.pages).map(d=>d.id));
+  $('#delAllDocs').onclick=async()=>{if(!S.docs.length)return;if(!confirm(`작업 목록의 문서 ${S.docs.length}개를 모두 지울까요? (원본 파일은 그대로입니다)`))return;for(const d of S.docs)await api('/api/docs/'+d.id,{method:'DELETE'});S.doc=null;renderAll();renderFields();loadDocs();toast('목록을 비웠습니다')};
   let dc=0;
   addEventListener('dragenter',e=>{if(e.dataTransfer?.types?.includes('Files')){dc++;$('#dropAll').classList.add('on')}});
   addEventListener('dragleave',()=>{if(--dc<=0){dc=0;$('#dropAll').classList.remove('on')}});
   addEventListener('dragover',e=>e.preventDefault());
-  addEventListener('drop',e=>{e.preventDefault();dc=0;$('#dropAll').classList.remove('on');if(e.dataTransfer.files.length)upload(e.dataTransfer.files)});
+  addEventListener('drop',async e=>{e.preventDefault();dc=0;$('#dropAll').classList.remove('on');const items=normItems(await itemsFromDrop(e.dataTransfer));if(!items.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);upload2(items)});
   $('#pPrev').onclick=()=>gotoPage(S.page-1);$('#pNext').onclick=()=>gotoPage(S.page+1);
   $('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=()=>{S.zoom=null;applyZoom()};
   $('#viewer').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1)}},{passive:false});

@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import cv2
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
@@ -92,59 +92,69 @@ def _thumb(src: Path, dst: Path) -> None:
 
 
 def ingest_file(src: Path, name: str) -> dict:
-    """이미지/PDF를 작업공간 문서로 등록 (페이지별 PNG + 썸네일)."""
+    """이미지/PDF 한 개를 문서로 등록."""
+    return ingest_files([(src, name)], name)
+
+
+def ingest_files(items: list[tuple[Path, str]], doc_name: str) -> dict:
+    """여러 이미지/PDF를 한 문서(여러 쪽)로 등록 (페이지별 PNG + 썸네일). 폴더 단위 기록물용."""
     doc_id = uuid.uuid4().hex[:12]
     d = DOCS / doc_id
     (d / "pages").mkdir(parents=True)
     (d / "thumbs").mkdir()
     pages: list[dict] = []
-    ext = src.suffix.lower()
 
-    if ext == ".pdf":
-        import pypdfium2 as pdfium
-        pdf = pdfium.PdfDocument(str(src))
-        for i in range(len(pdf)):
-            page = pdf[i]
-            scale = PDF_DPI / 72
-            pw, ph = page.get_size()
-            if pw * ph * scale * scale > 60_000_000:  # 너무 큰 페이지는 해상도 낮춤
-                scale = (60_000_000 / (pw * ph)) ** 0.5
-            bmp = page.render(scale=scale).to_pil()
-            fn = f"pages/p{i + 1:04d}.png"
-            bmp.save(d / fn)
-            pinfo = {"index": i, "file": fn, "proc": f"pages/p{i + 1:04d}_proc.png", "thumb": f"thumbs/p{i + 1:04d}.jpg",
-                     "width": bmp.width, "height": bmp.height, "dpi": round(scale * 72), "result": None}
-            try:  # 이미 텍스트가 있는 PDF는 바로 추출
-                text = page.get_textpage().get_text_range().replace("\r\n", "\n").replace("\r", "\n").strip()
-            except Exception:  # noqa: BLE001
-                text = ""
-            if len(text) >= 20:
-                lines = [{"text": l, "conf": None, "box": None, "block": 0} for l in text.splitlines()]
-                pinfo["pdf_text"] = True
-                pinfo["result"] = {"engine": "pdf-text", "lines": lines, "text": text, "mean_conf": None, "time_ms": 0}
-            _thumb(d / fn, d / pinfo["thumb"])
-            pages.append(pinfo)
-        pdf.close()
-    elif ext in IMG_EXT:
-        from PIL import Image, ImageSequence
-        im = Image.open(src)
-        frames = [f.copy() for f in ImageSequence.Iterator(im)] if ext in (".tif", ".tiff") else [im]
-        dpi_info = im.info.get("dpi")
-        for i, fr in enumerate(frames):
-            if fr.mode not in ("RGB", "L"):
-                fr = fr.convert("RGB")
-            fn = f"pages/p{i + 1:04d}.png"
-            fr.save(d / fn)
-            dpi = round(float(dpi_info[0])) if dpi_info and float(dpi_info[0]) >= 72 else 300
-            pinfo = {"index": i, "file": fn, "proc": f"pages/p{i + 1:04d}_proc.png", "thumb": f"thumbs/p{i + 1:04d}.jpg",
-                     "width": fr.width, "height": fr.height, "dpi": dpi, "result": None}
-            _thumb(d / fn, d / pinfo["thumb"])
-            pages.append(pinfo)
-    else:
+    def new_page(img, dpi: int, source: str) -> dict:
+        i = len(pages)
+        fn = f"pages/p{i + 1:04d}.png"
+        img.save(d / fn)
+        pinfo = {"index": i, "file": fn, "proc": f"pages/p{i + 1:04d}_proc.png", "thumb": f"thumbs/p{i + 1:04d}.jpg",
+                 "width": img.width, "height": img.height, "dpi": dpi, "result": None, "source": source}
+        _thumb(d / fn, d / pinfo["thumb"])
+        pages.append(pinfo)
+        return pinfo
+
+    try:
+        for src, name in items:
+            ext = src.suffix.lower()
+            if ext == ".pdf":
+                import pypdfium2 as pdfium
+                pdf = pdfium.PdfDocument(str(src))
+                for i in range(len(pdf)):
+                    page = pdf[i]
+                    scale = PDF_DPI / 72
+                    pw, ph = page.get_size()
+                    if pw * ph * scale * scale > 60_000_000:  # 너무 큰 페이지는 해상도 낮춤
+                        scale = (60_000_000 / (pw * ph)) ** 0.5
+                    pinfo = new_page(page.render(scale=scale).to_pil(), round(scale * 72), name)
+                    try:  # 이미 텍스트가 있는 PDF는 바로 추출
+                        text = page.get_textpage().get_text_range().replace("\r\n", "\n").replace("\r", "\n").strip()
+                    except Exception:  # noqa: BLE001
+                        text = ""
+                    if len(text) >= 20:
+                        lines = [{"text": l, "conf": None, "box": None, "block": 0} for l in text.splitlines()]
+                        pinfo["pdf_text"] = True
+                        pinfo["result"] = {"engine": "pdf-text", "lines": lines, "text": text, "mean_conf": None, "time_ms": 0}
+                pdf.close()
+            elif ext in IMG_EXT:
+                from PIL import Image, ImageSequence
+                im = Image.open(src)
+                frames = [f.copy() for f in ImageSequence.Iterator(im)] if ext in (".tif", ".tiff") else [im]
+                dpi_info = im.info.get("dpi")
+                for fr in frames:
+                    if fr.mode not in ("RGB", "L"):
+                        fr = fr.convert("RGB")
+                    dpi = round(float(dpi_info[0])) if dpi_info and float(dpi_info[0]) >= 72 else 300
+                    new_page(fr, dpi, name)
+            else:
+                raise HTTPException(400, f"지원하지 않는 파일 형식입니다: {name}")
+    except Exception:
         shutil.rmtree(d, ignore_errors=True)
-        raise HTTPException(400, f"지원하지 않는 파일 형식입니다: {name}")
+        raise
 
-    doc = {"id": doc_id, "name": name, "created": time.time(), "pages": pages}
+    doc = {"id": doc_id, "name": doc_name, "created": time.time(), "pages": pages}
+    if len(items) > 1:
+        doc["files"] = [n for _, n in items]
     save_doc(doc)
     return doc
 
@@ -302,10 +312,12 @@ def _sniff_ext(path: Path) -> str | None:
 
 
 @app.post("/api/upload")
-async def api_upload(files: list[UploadFile] = File(...)):
+async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""), doc_name: str = Form("")):
+    """merge=1 이면 받은 파일 전체를 한 문서(여러 쪽)로, 아니면 파일마다 문서."""
     tmp = WS / "tmp"
     tmp.mkdir(exist_ok=True)
     docs = []
+    staged: list[tuple[Path, str]] = []
     for f in files:
         name = _decode_filename(Path(f.filename or "file").name)
         t = tmp / f"{uuid.uuid4().hex}{Path(name).suffix.lower()}"
@@ -318,9 +330,15 @@ async def api_upload(files: list[UploadFile] = File(...)):
                 t.rename(t2)
                 t = t2
                 name = Path(name).stem + ext
-        try:
-            docs.append(ingest_file(t, name))
-        finally:
+        staged.append((t, name))
+    try:
+        if merge in ("1", "true") and staged:
+            docs.append(ingest_files(staged, doc_name or staged[0][1]))
+        else:
+            for t, name in staged:
+                docs.append(ingest_file(t, name))
+    finally:
+        for t, _ in staged:
             t.unlink(missing_ok=True)
     return docs
 
