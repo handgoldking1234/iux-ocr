@@ -101,6 +101,10 @@ aside.left{background:var(--panel);border-right:1px solid var(--line);display:fl
 /* viewer */
 section.center{display:flex;flex-direction:column;min-width:0;min-height:0}
 .vbar{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.vbar{flex-wrap:wrap;row-gap:6px}
+.vbar>*{flex:none}
+.vbar .name{flex:1 1 0;min-width:60px}
+.seg button{white-space:nowrap}
 .vbar .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
 .pg{font-weight:700;min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
 .zoomv{min-width:48px;text-align:center;color:var(--text-2);font-variant-numeric:tabular-nums}
@@ -334,13 +338,14 @@ table.fields td[contenteditable]{outline:none}
         <span class="sep"></span>
         <button class="btn icon sm ghost" id="rotL" data-ic="rotl" title="왼쪽으로 90° 돌리기 (Shift+클릭: 문서 모든 쪽)"></button>
         <button class="btn icon sm ghost" id="rotR" data-ic="rotr" title="오른쪽으로 90° 돌리기 (Shift+클릭: 문서 모든 쪽)"></button>
+        <button class="btn sm ghost" id="rotAuto" data-ic="wand" title="문서의 모든 쪽 방향을 감지해 돌아간 쪽만 바로 세우기 (인식 전에도 가능)">자동 세움</button>
         <span class="sep"></span>
         <div class="seg" id="viewSeg">
           <button data-v="image" class="on">원본</button>
           <button data-v="proc">전처리</button>
         </div>
-        <div class="seg" id="toolSeg"><button data-tool="select" title="드래그해서 영역의 글자 선택·복사 (Space를 누른 채 드래그하면 이동)"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>영역 선택</button><button data-tool="pan" title="드래그로 화면 이동"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/></svg>이동</button></div>
-        <div class="seg"><button id="boxToggle" class="on"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>인식 영역</button></div>
+        <div class="seg" id="toolSeg"><button data-tool="select" title="드래그해서 영역의 글자 선택·복사 (Space를 누른 채 드래그하면 이동)"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>선택</button><button data-tool="pan" title="드래그로 화면 이동"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/></svg>이동</button></div>
+        <div class="seg"><button id="boxToggle" class="on"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>박스</button></div>
         <span class="name" id="vName"></span>
       </div>
       <div class="viewer" id="viewer">
@@ -1413,6 +1418,13 @@ function bind(){
   const rot=async(deg,all)=>{if(!S.doc||S.running)return;const pages=all?S.doc.pages.map((_,i)=>i):[S.page];
     if(pages.some(i=>S.doc.pages[i].result)&&!confirm(`${all?'모든 쪽':'이 페이지'}을 돌리면 인식 결과가 지워집니다. 돌린 뒤 다시 인식하세요. 계속할까요?`))return;
     try{S.doc=await api(`/api/docs/${S.doc.id}/rotate`,{json:{pages,deg}});S.view='image';hideSel();renderAll();renderFields();loadDocs();toast(all?`${pages.length}쪽을 돌렸습니다`:'돌렸습니다')}catch(e){toast(e.message,true)}};
+  $('#rotAuto').onclick=async()=>{if(!S.doc||S.running)return;const doc=S.doc,pages=doc.pages.map((_,i)=>i);
+    if(doc.pages.some(p=>p.result)&&!confirm('돌아간 쪽을 바로 세우면 그 쪽의 인식 결과는 지워집니다(다시 인식 필요). 계속할까요?'))return;
+    setRunning(true,0);$('#runPage').innerHTML=ic('loader','spin')+'방향 확인 중…';let fixed=[];
+    try{for(let k=0;k<pages.length;k+=5){if(S.stop)break;const r=await api(`/api/docs/${doc.id}/auto-orient`,{json:{pages:pages.slice(k,k+5)}});fixed=fixed.concat(r.fixed);if(S.doc?.id===doc.id){S.doc=r.doc;renderThumbs()}setRunning(true,Math.min(1,(k+5)/pages.length));$('#runPage').innerHTML=ic('loader','spin')+`방향 확인 ${Math.min(k+5,pages.length)}/${pages.length}`}}
+    catch(e){toast(e.message,true)}
+    setRunning(false);if(S.doc?.id===doc.id){S.view='image';renderAll();renderFields()}loadDocs();
+    toast(fixed.length?`돌아간 ${fixed.length}쪽을 바로 세웠습니다 (${fixed.map(f=>f.page+1).slice(0,10).join(', ')}${fixed.length>10?'…':''}쪽)`:'돌아간 쪽이 없습니다. 안 맞는 쪽은 ⟲ ⟳ 버튼으로 돌리세요')};
   $('#rotL').onclick=e=>rot(270,e.shiftKey);$('#rotR').onclick=e=>rot(90,e.shiftKey);
   $('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=()=>{S.zoom=null;applyZoom()};
   $('#viewer').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1)}},{passive:false});

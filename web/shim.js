@@ -363,6 +363,15 @@
       const d = await getDoc(m[1]); const pg = await runOcr(d, body.page, body);
       const fresh = await getDoc(m[1]); fresh.pages[body.page] = pg; await putDoc(fresh); return pg;
     }
+    if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/auto-orient$/))) {
+      const d = await getDoc(m[1]), fixed = [];
+      for (const i of body.pages) {
+        if (!d.pages[i]) continue;
+        const deg = await detectRotation(await blobToCanvas(await getBlob(`${d.id}/image/${i}`)));
+        if (deg) { await rotateStored(d, i, deg); fixed.push({ page: i, deg }); }
+      }
+      await putDoc(d); await loadUrls(d); return { fixed, doc: d };
+    }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/rotate$/))) {
       const d = await getDoc(m[1]);
       for (const i of body.pages) if (d.pages[i]) await rotateStored(d, i, body.deg);

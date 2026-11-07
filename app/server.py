@@ -469,6 +469,34 @@ def api_rotate(doc_id: str, req: RotateReq):
     return doc
 
 
+class AutoOrientReq(BaseModel):
+    pages: list[int]
+
+
+@app.post("/api/docs/{doc_id}/auto-orient")
+def api_auto_orient(doc_id: str, req: AutoOrientReq):
+    """인식 없이 방향만 감지해 돌아간 쪽을 바로 세움."""
+    fixed = []
+    for i in req.pages:
+        with _lock:
+            doc = load_doc(doc_id)
+        if not 0 <= i < len(doc["pages"]):
+            continue
+        p = doc["pages"][i]
+        img = preprocess.load_bgr(str(DOCS / doc_id / p["file"]))
+        h, w = img.shape[:2]
+        s_ = min(1.0, 1800 / max(h, w))
+        small = cv2.resize(img, None, fx=s_, fy=s_, interpolation=cv2.INTER_AREA) if s_ < 1 else img
+        deg = preprocess.detect_orientation(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
+        if deg:
+            with _lock:
+                doc = load_doc(doc_id)
+                rotate_page(doc, i, deg)
+                save_doc(doc)
+            fixed.append({"page": i, "deg": deg})
+    return {"fixed": fixed, "doc": load_doc(doc_id)}
+
+
 @app.post("/api/docs/{doc_id}/ocr-region")
 def api_ocr_region(doc_id: str, req: RegionReq):
     """화면에서 드래그한 영역만 잘라 인식 (선택 영역 복사용)."""
