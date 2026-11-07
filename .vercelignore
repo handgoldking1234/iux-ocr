@@ -1,0 +1,13 @@
+# 웹버전(정적 사이트)만 배포 — 파이썬 서버·빌드 파일은 올리지 않음
+# (파이썬 파일이 있으면 Vercel이 서버 함수로 실행하려다 500 오류가 남)
+*.py
+requirements.txt
+iux_ocr.spec
+install/
+tools/
+samples/
+docs/
+.github/
+run_windows.bat
+run_mac_linux.sh
+app/*.py
