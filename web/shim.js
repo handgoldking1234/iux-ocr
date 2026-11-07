@@ -270,12 +270,13 @@
     const pages = doc.pages.filter(p => p.result && (pageIdx == null || pageIdx.includes(p.index)));
     if (!pages.length) throw new Error('인식된 페이지가 없습니다. 먼저 OCR을 실행하세요.');
     const stem = doc.name.replace(/\.[^.]+$/, ''), multi = pages.length > 1;
-    if (fmt === 'txt') return [new Blob(['﻿' + pages.map(p => (multi ? `===== ${p.index + 1} 페이지 =====\n` : '') + p.result.text).join('\n\n')], { type: 'text/plain' }), stem + '.txt'];
-    if (fmt === 'md') return [new Blob([`# ${doc.name}\n\n` + pages.map(p => (multi ? `## ${p.index + 1} 페이지\n\n` : '') + p.result.text).join('\n\n')], { type: 'text/markdown' }), stem + '.md'];
-    if (fmt === 'json') return [new Blob([JSON.stringify({ document: doc.name, pages: pages.map(p => ({ page: p.index + 1, width: p.width, height: p.height, ...p.result, lines: effectiveLines(p.result) })) }, null, 2)], { type: 'application/json' }), stem + '.json'];
+    const lab = p => p.label || `${p.index + 1} 페이지`;
+    if (fmt === 'txt') return [new Blob(['﻿' + pages.map(p => (multi ? `===== ${lab(p)} =====\n` : '') + p.result.text).join('\n\n')], { type: 'text/plain' }), stem + '.txt'];
+    if (fmt === 'md') return [new Blob([`# ${doc.name}\n\n` + pages.map(p => (multi ? `## ${lab(p)}\n\n` : '') + p.result.text).join('\n\n')], { type: 'text/markdown' }), stem + '.md'];
+    if (fmt === 'json') return [new Blob([JSON.stringify({ document: doc.name, pages: pages.map(p => ({ page: p.index + 1, ...(p.doc_name ? { document: p.doc_name } : {}), width: p.width, height: p.height, ...p.result, lines: effectiveLines(p.result) })) }, null, 2)], { type: 'application/json' }), stem + '.json'];
     if (fmt === 'docx') { // Word가 여는 HTML 문서
       const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>body{font-family:'맑은 고딕';font-size:10.5pt}</style></head><body><h1>${escH(doc.name)}</h1>` +
-        pages.map((p, i) => (multi ? `<h2>${p.index + 1} 페이지</h2>` : '') + p.result.text.split('\n').map(l => `<p>${escH(l) || '&nbsp;'}</p>`).join('') + (i < pages.length - 1 ? '<br style="page-break-before:always">' : '')).join('') + '</body></html>';
+        pages.map((p, i) => (multi ? `<h2>${escH(lab(p))}</h2>` : '') + p.result.text.split('\n').map(l => `<p>${escH(l) || '&nbsp;'}</p>`).join('') + (i < pages.length - 1 ? '<br style="page-break-before:always">' : '')).join('') + '</body></html>';
       return [new Blob(['﻿' + html], { type: 'application/msword' }), stem + '.doc'];
     }
     if (fmt === 'xlsx') {
@@ -284,10 +285,10 @@
       const tpl = tplById(tid);
       if (tpl) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['항목', '값'], ...valuesFor(tpl, full).map(v => [v.name, v.value])]), '추출 항목');
       const rows = [['페이지', '줄', '텍스트', '신뢰도', '엔진', 'x', 'y', 'w', 'h']];
-      pages.forEach(p => effectiveLines(p.result).forEach((l, j) => rows.push([p.index + 1, j + 1, l.text, l.conf, p.result.engine, ...(l.box || [null, null, null, null]).map(v => v == null ? null : Math.round(v * 1e4) / 1e4)])));
+      pages.forEach(p => effectiveLines(p.result).forEach((l, j) => rows.push([lab(p), j + 1, l.text, l.conf, p.result.engine, ...(l.box || [null, null, null, null]).map(v => v == null ? null : Math.round(v * 1e4) / 1e4)])));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '줄별 인식결과');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['항목', '값'], ...R.extractFields(full).map(f => [f.label, f.value])]), '공문서 항목');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['페이지', '텍스트', '평균 신뢰도', '엔진'], ...pages.map(p => [p.index + 1, p.result.text, p.result.mean_conf, p.result.engine])]), '페이지 전체');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['페이지', '텍스트', '평균 신뢰도', '엔진'], ...pages.map(p => [lab(p), p.result.text, p.result.mean_conf, p.result.engine])]), '페이지 전체');
       const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       return [new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), stem + '.xlsx'];
     }
@@ -365,6 +366,24 @@
       const d = await getDoc(m[1]);
       const [blob, name] = await exportDoc(d, body.format, body.pages, body.template_id);
       return new Response(blob, { headers: { 'content-type': blob.type, 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` } });
+    }
+    if (p === '/api/export-all') {
+      const docs = (await allDocs()).sort((a, b) => a.created - b.created);
+      const ids = body.doc_ids || docs.map(d => d.id);
+      const pages = []; let skipped = 0;
+      for (const id of ids) {
+        const d = await getDoc(id); if (!d) continue;
+        const multi = d.pages.length > 1;
+        for (const pg of d.pages) {
+          if (!pg.result) { skipped++; continue; }
+          pages.push({ ...pg, label: multi ? `${d.name} · ${pg.index + 1}쪽` : d.name, doc_name: d.name });
+        }
+      }
+      if (!pages.length) fail("인식된 페이지가 없습니다. 먼저 '모두 인식'을 실행하세요.");
+      pages.forEach((q, i) => { q.index = i; });
+      const name = body.name || `OCR_전체_${ids.length}건_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+      const [blob, fname] = await exportDoc({ id: 'all', name, pages }, body.format, null, body.template_id);
+      return new Response(blob, { headers: { 'content-type': blob.type, 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fname)}`, 'x-skipped-pages': String(skipped) } });
     }
     if (p === '/api/refine') {
       if (body.ai) fail('AI 재가공은 PC 설치 버전(Ollama)에서 사용할 수 있습니다.');

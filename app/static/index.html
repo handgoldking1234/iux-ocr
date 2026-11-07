@@ -469,10 +469,10 @@ table.fields td[contenteditable]{outline:none}
       <div class="tab" id="tab-export">
         <div class="rf">
           <div class="row"><span class="lbl">범위</span>
-            <div class="seg" id="expSeg"><button data-s="all" class="on">전체 페이지</button><button data-s="page">현재 페이지</button></div>
+            <div class="seg" id="expSeg"><button data-s="docs" title="목록의 모든 문서(폴더 전체)를 한 파일로">모든 문서 합치기</button><button data-s="all" class="on">이 문서 전체</button><button data-s="page">현재 페이지</button></div>
           </div>
           <div class="fmts" id="fmts"></div>
-          <div class="muted">· 편집·재가공한 텍스트가 그대로 저장됩니다.<br>· <b>검색 가능한 PDF</b>는 원본 이미지 위에 투명 텍스트를 얹어, 모양은 그대로이고 글자 검색·복사가 됩니다.<br>· <b>Excel</b>에는 줄별 신뢰도(70 미만 주황색)와 공문서 항목 시트가 함께 들어갑니다.<br>· 재가공 탭에서 고른 <b>내 항목 템플릿</b>(<span id="expTpl">없음</span>)이 Excel 첫 시트 '추출 항목'으로 들어갑니다.</div>
+          <div class="muted">· <b>모든 문서 합치기</b>: 폴더째 불러온 문서 전부를 문서 이름·쪽 제목을 붙여 한 파일로 저장합니다.<br>· 편집·재가공한 텍스트가 그대로 저장됩니다.<br>· <b>검색 가능한 PDF</b>는 원본 이미지 위에 투명 텍스트를 얹어, 모양은 그대로이고 글자 검색·복사가 됩니다.<br>· <b>Excel</b>에는 줄별 신뢰도(70 미만 주황색)와 공문서 항목 시트가 함께 들어갑니다.<br>· 재가공 탭에서 고른 <b>내 항목 템플릿</b>(<span id="expTpl">없음</span>)이 Excel 첫 시트 '추출 항목'으로 들어갑니다.</div>
         </div>
       </div>
     </aside>
@@ -1225,11 +1225,15 @@ function renderExport(){
 }
 function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 async function doExport(fmt,btn){
-  if(!S.doc)return toast('문서를 먼저 추가하세요',true);
+  if(!S.doc&&S.expScope!=='docs')return toast('문서를 먼저 추가하세요',true);
+  if(S.expScope==='docs'&&!S.docs.length)return toast('문서를 먼저 추가하세요',true);
   const pages=S.expScope==='page'?[S.page]:null;
   btn.disabled=true;
   try{
-    const r=await api(`/api/docs/${S.doc.id}/export`,{json:{format:fmt,pages,template_id:S.set.tpl||null,model:S.set.llm||null},raw:true});
+    const r=S.expScope==='docs'
+      ?await api('/api/export-all',{json:{format:fmt,doc_ids:[...S.docs].reverse().map(d=>d.id),template_id:S.set.tpl||null,model:S.set.llm||null},raw:true})
+      :await api(`/api/docs/${S.doc.id}/export`,{json:{format:fmt,pages,template_id:S.set.tpl||null,model:S.set.llm||null},raw:true});
+    const sk=+(r.headers.get('x-skipped-pages')||0);if(sk)toast(`아직 인식 안 된 ${sk}쪽은 빠졌습니다 ('모두 인식' 후 다시 저장하세요)`,true);
     const blob=await r.blob();const cd=r.headers.get('content-disposition')||'';const m=cd.match(/filename\*=UTF-8''([^;]+)/);
     dl(blob,m?decodeURIComponent(m[1]):'export.'+fmt);toast('저장했습니다');
   }catch(e){toast(e.message,true)}finally{btn.disabled=false}

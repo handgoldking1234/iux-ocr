@@ -243,6 +243,14 @@ class ExportReq(BaseModel):
     model: str | None = None
 
 
+class ExportAllReq(BaseModel):
+    format: str
+    doc_ids: list[str] | None = None
+    template_id: str | None = None
+    model: str | None = None
+    name: str | None = None
+
+
 class ExtractReq(BaseModel):
     text: str
     template_id: str | None = None
@@ -564,6 +572,43 @@ def api_helper_move(body: dict, t: str | None = None):
         i = max(0, min(len(order) - 1, i + int(body.get("dir", 1))))
         CURRENT["doc_id"] = order[i]
     return _helper_payload()
+
+
+@app.post("/api/export-all")
+def api_export_all(req: ExportAllReq):
+    """여러 문서(폴더 전체)의 인식 텍스트를 하나의 파일로 합쳐 내보내기."""
+    if req.format not in exporters.FORMATS:
+        raise HTTPException(400, "지원하지 않는 형식")
+    ids = req.doc_ids or [d["id"] for d in reversed(api_docs())]
+    pages, skipped = [], 0
+    for did in ids:
+        d = load_doc(did)
+        multi = len(d["pages"]) > 1
+        for p in d["pages"]:
+            if not p.get("result"):
+                skipped += 1
+                continue
+            q = dict(p)
+            q["label"] = f"{d['name']} · {p['index'] + 1}쪽" if multi else d["name"]
+            q["doc_name"] = d["name"]
+            q["_dir"] = str(DOCS / did)
+            pages.append(q)
+    if not pages:
+        raise HTTPException(400, "인식된 페이지가 없습니다. 먼저 '모두 인식'을 실행하세요.")
+    for i, q in enumerate(pages):
+        q["index"] = i
+    name = req.name or f"OCR_전체_{len(ids)}건_{time.strftime('%Y%m%d')}"
+    doc = {"id": "all", "name": name, "pages": pages}
+    try:
+        tpl = TEMPLATES.get(req.template_id)
+        data = exporters.export(req.format, doc, pages, DOCS, tpl, req.model)
+    except Exception as e:  # noqa: BLE001
+        traceback.print_exc()
+        raise HTTPException(500, f"내보내기 실패: {e}") from e
+    mime, ext = exporters.FORMATS[req.format]
+    return Response(data, media_type=mime, headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(name + ext)}",
+        "X-Skipped-Pages": str(skipped), "Access-Control-Expose-Headers": "X-Skipped-Pages"})
 
 
 @app.get("/api/templates")
