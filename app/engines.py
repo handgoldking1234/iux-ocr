@@ -70,6 +70,14 @@ def tesseract_info() -> dict:
         if (exe_td / "kor.traineddata").exists():
             local = exe_td
     _tess_dir = str(local) if (local / "kor.traineddata").exists() else None
+    if _tess_dir is None:
+        bundled = Path(cmd).parent / "tessdata"
+        if (bundled / "kor.traineddata").exists():
+            _tess_dir = str(bundled)
+    # 윈도우 Tesseract는 경로에 한글이 있으면 언어 데이터를 못 읽는다
+    # (예: C:\Users\홍길동\AppData\Local\Programs\IUX OCR) → 영문 경로로 복사해 사용
+    if _tess_dir and os.name == "nt" and not _tess_dir.isascii():
+        _tess_dir = _mirror_ascii(_tess_dir) or _tess_dir
     try:
         langs = pytesseract.get_languages(config=_tess_cfg(""))
         ver = str(pytesseract.get_tesseract_version())
@@ -80,6 +88,30 @@ def tesseract_info() -> dict:
         "available": True, "version": ver, "path": cmd, "langs": langs, "has_kor": has_kor,
         "reason": None if has_kor else "한국어(kor) 언어 데이터가 없습니다. 설치 시 Korean을 체크하세요.",
     }
+
+
+def _mirror_ascii(src: str) -> str | None:
+    """언어 데이터(*.traineddata)를 한글 없는 고정 경로로 복사하고 그 경로를 돌려준다."""
+    cands = [os.path.join(os.environ.get("PUBLIC", r"C:\Users\Public"), "IUXOCR", "tessdata"),
+             os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"), "IUXOCR", "tessdata"),
+             r"C:\IUXOCR\tessdata"]
+    files = [f for f in os.listdir(src) if f.endswith(".traineddata")]
+    for dst in cands:
+        if not dst.isascii():
+            continue
+        try:
+            os.makedirs(dst, exist_ok=True)
+            for f in files:
+                a, b = os.path.join(src, f), os.path.join(dst, f)
+                if not os.path.exists(b) or os.path.getsize(a) != os.path.getsize(b):
+                    shutil.copy2(a, b)
+            for sub in ("configs", "tessconfigs"):  # psm 등 설정 파일
+                if os.path.isdir(os.path.join(src, sub)) and not os.path.isdir(os.path.join(dst, sub)):
+                    shutil.copytree(os.path.join(src, sub), os.path.join(dst, sub))
+            return dst
+        except OSError:
+            continue
+    return None
 
 
 def _tess_cfg(extra: str) -> str:
