@@ -91,6 +91,12 @@ def _thumb(src: Path, dst: Path) -> None:
     buf.tofile(str(dst))
 
 
+def ingest_into(holder: dict, items: list[tuple[Path, str]]) -> None:
+    """holder(id, pages)에 쪽을 만들어 붙이기만 함 (저장은 호출한 쪽에서)."""
+    tmpdoc = ingest_files(items, "", {"id": holder["id"], "pages": holder["pages"], "_nosave": True})
+    holder["pages"] = tmpdoc["pages"]
+
+
 def ingest_file(src: Path, name: str) -> dict:
     """이미지/PDF 한 개를 문서로 등록."""
     return ingest_files([(src, name)], name)
@@ -113,9 +119,10 @@ def ingest_files(items: list[tuple[Path, str]], doc_name: str, existing: dict | 
 
     def new_page(img, dpi: int, source: str) -> dict:
         i = len(pages)
-        fn = f"pages/p{i + 1:04d}.png"
+        key = uuid.uuid4().hex[:10]  # 쪽 순서가 바뀌어도 겹치지 않는 파일 이름
+        fn = f"pages/{key}.png"
         img.save(d / fn)
-        pinfo = {"index": i, "file": fn, "proc": f"pages/p{i + 1:04d}_proc.png", "thumb": f"thumbs/p{i + 1:04d}.jpg",
+        pinfo = {"index": i, "key": key, "file": fn, "proc": f"pages/{key}_proc.png", "thumb": f"thumbs/{key}.jpg",
                  "width": img.width, "height": img.height, "dpi": dpi, "result": None, "source": source}
         _thumb(d / fn, d / pinfo["thumb"])
         pages.append(pinfo)
@@ -167,6 +174,8 @@ def ingest_files(items: list[tuple[Path, str]], doc_name: str, existing: dict | 
             shutil.rmtree(d, ignore_errors=True)
         raise
 
+    if existing and existing.get("_nosave"):
+        return existing
     if existing:
         doc = existing
         doc.setdefault("files", [])
@@ -343,9 +352,10 @@ def api_docs():
         try:
             d = json.loads(m.read_text("utf-8"))
             done = sum(1 for p in d["pages"] if p.get("result"))
+            pend = sum(1 for p in d["pages"] if p.get("pending"))
             f = d.get("fields") or {}
             out.append({"id": d["id"], "name": d["name"], "created": d["created"], "pages": len(d["pages"]), "done": done,
-                        "checked": bool(f.get("checked")), "filled": sum(1 for v in f.get("values", []) if v.get("value"))})
+                        "checked": bool(f.get("checked")), "filled": sum(1 for v in f.get("values", []) if v.get("value")), "pending": pend})
         except Exception:  # noqa: BLE001
             continue
     return sorted(out, key=lambda x: -x["created"])
@@ -411,6 +421,62 @@ async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""),
     return docs
 
 
+class LazyDocReq(BaseModel):
+    name: str
+    files: list[str]  # 폴더 안 상대 경로 (정렬된 순서)
+
+
+@app.post("/api/docs/lazy")
+def api_docs_lazy(req: LazyDocReq):
+    """검수 프로그램처럼 파일 목록만 먼저 등록. 이미지는 변환할 때 한 장씩 불러온다."""
+    doc_id = uuid.uuid4().hex[:12]
+    d = DOCS / doc_id
+    (d / "pages").mkdir(parents=True)
+    (d / "thumbs").mkdir()
+    pages = [{"index": i, "key": uuid.uuid4().hex[:10], "pending": True, "path": f, "source": Path(f).name, "result": None}
+             for i, f in enumerate(req.files)]
+    doc = {"id": doc_id, "name": req.name, "created": time.time(), "pages": pages, "lazy": True}
+    save_doc(doc)
+    return doc
+
+
+@app.post("/api/docs/{doc_id}/fill")
+async def api_fill(doc_id: str, key: str = Form(...), files: list[UploadFile] = File(...)):
+    """대기 중인 쪽(key)에 실제 파일을 채움. PDF·여러 쪽 TIFF면 그 자리에 여러 쪽으로 펼침."""
+    f = files[0]
+    tmp = WS / "tmp"
+    tmp.mkdir(exist_ok=True)
+    name = _decode_filename(Path(f.filename or "file").name)
+    t = tmp / f"{uuid.uuid4().hex}{Path(name).suffix.lower()}"
+    with open(t, "wb") as fo:
+        shutil.copyfileobj(f.file, fo)
+    if t.suffix not in IMG_EXT and t.suffix != ".pdf":
+        ext = _sniff_ext(t)
+        if ext:
+            t2 = t.with_suffix(ext)
+            t.rename(t2)
+            t = t2
+    try:
+        with _lock:
+            doc = load_doc(doc_id)
+            pos = next((i for i, p in enumerate(doc["pages"]) if p.get("key") == key), None)
+            if pos is None:
+                raise HTTPException(404, "대기 중인 쪽을 찾을 수 없습니다.")
+            holder = doc["pages"][pos]
+            temp = {"id": doc_id, "pages": []}
+            ingest_into(temp, [(t, name)])
+            new_pages = temp["pages"]
+            for q in new_pages:
+                q["path"] = holder.get("path")
+            doc["pages"][pos:pos + 1] = new_pages
+            for i, q in enumerate(doc["pages"]):
+                q["index"] = i
+            save_doc(doc)
+    finally:
+        t.unlink(missing_ok=True)
+    return {"doc": doc, "keys": [q["key"] for q in new_pages]}
+
+
 @app.get("/api/docs/{doc_id}")
 def api_doc(doc_id: str):
     return load_doc(doc_id)
@@ -430,7 +496,7 @@ def api_file(doc_id: str, kind: str, idx: int):
         raise HTTPException(404)
     p = doc["pages"][idx]
     key = {"image": "file", "proc": "proc", "thumb": "thumb"}.get(kind)
-    if not key:
+    if not key or p.get("pending"):
         raise HTTPException(404)
     path = DOCS / doc_id / p[key]
     if not path.exists():
@@ -444,6 +510,8 @@ def api_ocr(doc_id: str, req: OcrReq):
         doc = load_doc(doc_id)
     if not 0 <= req.page < len(doc["pages"]):
         raise HTTPException(400, "페이지 번호 오류")
+    if doc["pages"][req.page].get("pending"):
+        raise HTTPException(400, "아직 불러오지 않은 파일입니다.")
     try:
         page = ocr_page(doc, req.page, req.engine, req.lang, req.psm, req.model, req.pre, req.fix_spacing)
     except HTTPException:

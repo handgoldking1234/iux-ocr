@@ -38,17 +38,23 @@
 
   /* ---------------- 이미지 URL ---------------- */
   const URLS = {};
+  const KEYS = {};                       // 문서별 쪽 순서 → 저장 키 (쪽이 끼워지거나 빠져도 이미지가 섞이지 않게)
+  const pk = p => p.key || String(p.index); // 예전 문서는 쪽 번호가 곧 키
+  const noteKeys = d => { if (d && d.pages) KEYS[d.id] = d.pages.map(pk); return d; };
   const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACw=';
   async function loadUrls(doc) {
+    noteKeys(doc);
     for (const p of doc.pages) for (const kind of ['image', 'thumb', 'proc']) {
-      const k = `${doc.id}/${kind}/${p.index}`;
+      if (p.pending) continue;
+      const k = `${doc.id}/${kind}/${pk(p)}`;
       if (URLS[k]) continue;
       const b = await getBlob(k);
       if (b) URLS[k] = URL.createObjectURL(b);
     }
   }
   window.WEB_FILEURL = function (id, kind, i) {
-    return URLS[`${id}/${kind}/${i}`] || (kind === 'proc' ? URLS[`${id}/image/${i}`] : null) || BLANK;
+    const key = (KEYS[id] || [])[i] ?? String(i);
+    return URLS[`${id}/${kind}/${key}`] || (kind === 'proc' ? URLS[`${id}/image/${key}`] : null) || BLANK;
   };
   async function setBlob(id, kind, i, blob) {
     const k = `${id}/${kind}/${i}`;
@@ -98,18 +104,19 @@
   const uid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => b.toString(16).padStart(2, '0')).join('');
 
   async function ingest(file) { return ingestMany([file], file.name); }
-  async function ingestMany(files, docName, existing) {
+  async function ingestMany(files, docName, existing, noSave) {
     const id = existing ? existing.id : uid(), pages = existing ? existing.pages : [];
     const start = pages.length;
     let name = '';
     const addPage = async (c, _i, extra = {}) => {
-      const i = pages.length;
-      await setBlob(id, 'image', i, await toBlob(c, 'image/jpeg', 0.92)); /* PNG보다 훨씬 작게 저장 */
-      await setBlob(id, 'thumb', i, await thumbOf(c));
-      pages.push({ index: i, file: 'image', proc: 'proc', thumb: 'thumb', width: c.width, height: c.height, dpi: extra.dpi || 300, result: extra.result || null, source: name, ...(extra.pdf_text ? { pdf_text: true } : {}) });
+      const i = pages.length, key = uid();
+      await setBlob(id, 'image', key, await toBlob(c, 'image/jpeg', 0.92)); /* PNG보다 훨씬 작게 저장 */
+      await setBlob(id, 'thumb', key, await thumbOf(c));
+      pages.push({ index: i, key, file: 'image', proc: 'proc', thumb: 'thumb', width: c.width, height: c.height, dpi: extra.dpi || 300, result: extra.result || null, source: name, ...(extra.pdf_text ? { pdf_text: true } : {}) });
     };
     try { for (const file of files) { name = file.name; await addFile(file); } }
     catch (e) { if (existing) pages.splice(start); else await delDoc(id); throw e; }
+    if (noSave) return existing;
     const doc = existing || { id, name: docName, created: Date.now() / 1000, pages };
     if (existing) doc.files = (doc.files || []).concat(files.map(f => f.name));
     else if (files.length > 1) doc.files = files.map(f => f.name);
@@ -239,17 +246,19 @@
   }
   async function rotateStored(doc, idx, deg) {
     const p = doc.pages[idx];
-    const c = rotateCw(await blobToCanvas(await getBlob(`${doc.id}/image/${idx}`)), deg);
-    await setBlob(doc.id, 'image', idx, await toBlob(c, 'image/jpeg', 0.92));
-    await setBlob(doc.id, 'thumb', idx, await thumbOf(c));
-    await tx('blobs', 'readwrite', s => s.delete(`${doc.id}/proc/${idx}`));
-    const k = `${doc.id}/proc/${idx}`; if (URLS[k]) { URL.revokeObjectURL(URLS[k]); delete URLS[k]; }
+    const key = pk(p);
+    const c = rotateCw(await blobToCanvas(await getBlob(`${doc.id}/image/${key}`)), deg);
+    await setBlob(doc.id, 'image', key, await toBlob(c, 'image/jpeg', 0.92));
+    await setBlob(doc.id, 'thumb', key, await thumbOf(c));
+    await tx('blobs', 'readwrite', s => s.delete(`${doc.id}/proc/${key}`));
+    const k = `${doc.id}/proc/${key}`; if (URLS[k]) { URL.revokeObjectURL(URLS[k]); delete URLS[k]; }
     p.width = c.width; p.height = c.height; p.result = null; delete p.pdf_text;
     return c;
   }
   async function runOcr(doc, idx, req) {
     const t0 = performance.now(), p = doc.pages[idx];
-    let src = await blobToCanvas(await getBlob(`${doc.id}/image/${idx}`));
+    if (p.pending) throw new Error('아직 불러오지 않은 파일입니다.');
+    let src = await blobToCanvas(await getBlob(`${doc.id}/image/${pk(p)}`));
     let rotated = 0;
     if ((req.pre || {}).orient !== false) {
       const deg = await detectRotation(src);
@@ -257,7 +266,7 @@
     }
     const { canvas: pc, info } = preprocess(src, req.pre || {});
     if (rotated) info.rotate_fixed = rotated;
-    await setBlob(doc.id, 'proc', idx, await toBlob(pc, 'image/jpeg', 0.9));
+    await setBlob(doc.id, 'proc', pk(p), await toBlob(pc, 'image/jpeg', 0.9));
     const lang = ['kor+eng', 'kor', 'eng'].includes(req.lang) ? req.lang : 'kor+eng';
     const w = await worker(lang);
     await w.setParameters({ tessedit_pageseg_mode: String(req.psm || 4), preserve_interword_spaces: '1' });
@@ -346,7 +355,26 @@
     };
     if (p === '/api/docs' && method === 'GET') {
       const docs = await allDocs();
-      return docs.map(d => { const f = d.fields || {}; return { id: d.id, name: d.name, created: d.created, pages: d.pages.length, done: d.pages.filter(x => x.result).length, checked: !!f.checked, filled: (f.values || []).filter(v => v.value).length }; }).sort((a, b) => b.created - a.created);
+      return docs.map(d => { const f = d.fields || {}; return { id: d.id, name: d.name, created: d.created, pages: d.pages.length, done: d.pages.filter(x => x.result).length, pending: d.pages.filter(x => x.pending).length, checked: !!f.checked, filled: (f.values || []).filter(v => v.value).length }; }).sort((a, b) => b.created - a.created);
+    }
+    if (p === '/api/docs/lazy') {
+      const id = uid();
+      const doc = { id, name: body.name, created: Date.now() / 1000, lazy: true,
+        pages: body.files.map((f, i) => ({ index: i, key: uid(), pending: true, path: f, source: f.split('/').pop(), result: null })) };
+      await putDoc(doc); noteKeys(doc); return doc;
+    }
+    if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/fill$/))) {
+      const d = await getDoc(m[1]), key = opt.body.get('key'), file = opt.body.get('files');
+      const pos = d.pages.findIndex(x => x.key === key);
+      if (pos < 0) fail('대기 중인 쪽을 찾을 수 없습니다.');
+      const holder = d.pages[pos];
+      const tmp = { id: d.id, pages: [] };
+      await ingestMany([file], '', tmp, true);
+      tmp.pages.forEach(q => { q.path = holder.path; });
+      d.pages.splice(pos, 1, ...tmp.pages);
+      d.pages.forEach((q, i) => { q.index = i; });
+      await putDoc(d); await loadUrls(d);
+      return { doc: d, keys: tmp.pages.map(q => q.key) };
     }
     if (p === '/api/upload') {
       const files = opt.body.getAll('files'), out = [];
@@ -367,7 +395,8 @@
       const d = await getDoc(m[1]), fixed = [];
       for (const i of body.pages) {
         if (!d.pages[i]) continue;
-        const deg = await detectRotation(await blobToCanvas(await getBlob(`${d.id}/image/${i}`)));
+        if (d.pages[i].pending) continue;
+        const deg = await detectRotation(await blobToCanvas(await getBlob(`${d.id}/image/${pk(d.pages[i])}`)));
         if (deg) { await rotateStored(d, i, deg); fixed.push({ page: i, deg }); }
       }
       await putDoc(d); await loadUrls(d); return { fixed, doc: d };
@@ -379,8 +408,9 @@
     }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/ocr-region$/))) {
       const d = await getDoc(m[1]), i = body.page;
-      const k = body.view === 'proc' && await getBlob(`${d.id}/proc/${i}`) ? 'proc' : 'image';
-      const src = await blobToCanvas(await getBlob(`${d.id}/${k}/${i}`));
+      const key = pk(d.pages[i]);
+      const k = body.view === 'proc' && await getBlob(`${d.id}/proc/${key}`) ? 'proc' : 'image';
+      const src = await blobToCanvas(await getBlob(`${d.id}/${k}/${key}`));
       const [x0, y0, x1, y1] = body.box, pad = 6;
       const X0 = Math.max(0, Math.floor(x0 * src.width) - pad), Y0 = Math.max(0, Math.floor(y0 * src.height) - pad);
       const X1 = Math.min(src.width, Math.ceil(x1 * src.width) + pad), Y1 = Math.min(src.height, Math.ceil(y1 * src.height) + pad);

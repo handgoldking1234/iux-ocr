@@ -254,6 +254,17 @@ table.fields td[contenteditable]{outline:none}
 .selpop textarea:focus{border-color:var(--accent)}
 .selpop .row{gap:6px;flex-wrap:wrap}
 .selpop select{flex:1;height:28px;font-size:12px}
+.th.pending{background:var(--panel-2);border:1px dashed var(--line-2)}
+.th .ph{aspect-ratio:1/1.35;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px;text-align:center;font-size:10.5px;color:var(--text-3);word-break:break-all;line-height:1.35}
+.th .ph svg{width:18px;height:18px;opacity:.6}
+.th .st.wait{background:var(--text-3)}
+.th.pick{outline:3px solid var(--warn);outline-offset:-3px}
+.pickbar{grid-column:1/-1;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-size:12px;font-weight:700;position:sticky;top:0;z-index:2}
+.pickbar .btn{height:24px;padding:0 8px;font-size:11.5px}
+.pend{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--text-2)}
+.pend .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 30px;max-width:420px;box-shadow:var(--shadow)}
+.pend b{display:block;font-size:15px;color:var(--text);margin:10px 0 4px;word-break:break-all}
+.autoconv{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:8px;font-size:11.5px;color:var(--text-2)}
 .muted{color:var(--text-3);font-size:11.5px;line-height:1.55}
 /* export */
 .fmts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -316,6 +327,7 @@ table.fields td[contenteditable]{outline:none}
         <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         <b>여기에 끌어다 놓기</b><small>이미지 · PDF · TIFF · 폴더째로도 가능</small>
         <div class="btns"><button class="btn" id="addFiles" data-ic="file">파일 추가</button><button class="btn" id="addFolder" data-ic="folder">폴더 추가</button></div>
+        <label class="autoconv" title="폴더를 넣으면 파일 목록만 먼저 불러오고, 한 장씩 불러오면서 바로 텍스트로 변환"><input type="checkbox" id="autoConv">폴더는 목록만 → 한 장씩 바로 변환</label>
         <div class="upbar" id="upbar" hidden><i></i></div>
         <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf" hidden>
         <input type="file" id="folder" webkitdirectory directory multiple hidden>
@@ -350,6 +362,7 @@ table.fields td[contenteditable]{outline:none}
         <span class="name" id="vName"></span>
       </div>
       <div class="viewer" id="viewer">
+        <div class="pend" id="pendView" hidden></div>
         <div class="welcome" id="welcome">
           <div class="card">
             <div class="big"><svg class="i" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/></svg></div>
@@ -748,7 +761,7 @@ async function loadDocs(selectId){
   $('#docs').innerHTML=S.docs.length?S.docs.map(d=>`<div class="doc ${S.doc?.id===d.id?'on':''}" data-id="${d.id}">
      <div class="ico">${ic(/\.pdf$/i.test(d.name)?'file':'image')}</div>
      <div class="meta"><div class="nm" title="${esc(d.name)}">${esc(d.name)}</div>
-     <div class="sub">${d.done}/${d.pages}p ${d.checked?'<span class="chk">✓ 확인</span>':d.filled?`<span class="fil">항목 ${d.filled}</span>`:''}<span class="bar"><i style="width:${d.pages?d.done/d.pages*100:0}%"></i></span></div></div>
+     <div class="sub">${d.done}/${d.pages}p ${d.pending?`<span class="fil" style="background:var(--panel-2);color:var(--text-3)">대기 ${d.pending}</span>`:''}${d.checked?'<span class="chk">✓ 확인</span>':d.filled?`<span class="fil">항목 ${d.filled}</span>`:''}<span class="bar"><i style="width:${d.pages?d.done/d.pages*100:0}%"></i></span></div></div>
      <button class="btn icon sm ghost del" data-del="${d.id}" title="삭제">${ic('trash')}</button></div>`).join('')
    :'<div class="empty-side">아직 문서가 없습니다.</div>';
   $$('#docs .doc').forEach(el=>el.onclick=e=>{if(e.target.closest('[data-del]'))return;openDoc(el.dataset.id)});
@@ -766,11 +779,22 @@ async function openDoc(id,page=0,fromHelper=false){
 function renderThumbs(){
   if(!S.doc){$('#thumbs').innerHTML='';$('#pageCount').textContent='';return}
   $('#pageCount').textContent=S.doc.pages.length+'p';
-  $('#thumbs').innerHTML=S.doc.pages.map((p,i)=>{
-    const r=p.result;let st='';
-    if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':'AI')}</span>`}
-    return `<div class="th ${i===S.page?'on':''}" data-i="${i}" title="${esc(p.source||'')}"><img loading="lazy" src="${fileUrl(S.doc.id,'thumb',i,p.rev||0)}"><span class="no">${i+1}</span>${st}</div>`}).join('');
-  $$('#thumbs .th').forEach(el=>el.onclick=()=>gotoPage(+el.dataset.i));
+  const pend=S.doc.pages.filter(p=>p.pending).length;
+  $('#pageCount').textContent=S.doc.pages.length+'p'+(pend?` · 대기 ${pend}`:'');
+  const bar=S.pick.size?`<div class="pickbar"><span>${S.pick.size}쪽 선택</span><span style="flex:1"></span><button class="btn primary" id="pickGo">선택 변환</button><button class="btn" id="pickClr">해제</button></div>`:'';
+  $('#thumbs').innerHTML=bar+S.doc.pages.map((p,i)=>{
+    const r=p.result;let st='';const key=pkey(p);
+    if(p.pending)st='<span class="st wait">대기</span>';
+    else if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':'AI')}</span>`}
+    const body=p.pending?`<div class="ph">${ic('image')}${esc(p.source||'')}</div>`:`<img loading="lazy" src="${fileUrl(S.doc.id,'thumb',i,p.rev||0)}">`;
+    return `<div class="th ${i===S.page?'on':''} ${p.pending?'pending':''} ${S.pick.has(key)?'pick':''}" data-i="${i}" title="${esc(p.source||'')} (Ctrl·Shift+클릭: 여러 쪽 선택)">${body}<span class="no">${i+1}</span>${st}</div>`}).join('');
+  $$('#thumbs .th').forEach(el=>el.onclick=e=>{
+    const i=+el.dataset.i,key=pkey(S.doc.pages[i]);
+    if(e.shiftKey&&S.pickLast!=null){const[a,b]=[Math.min(S.pickLast,i),Math.max(S.pickLast,i)];for(let k=a;k<=b;k++)S.pick.add(pkey(S.doc.pages[k]));renderThumbs();return}
+    if(e.ctrlKey||e.metaKey){S.pick.has(key)?S.pick.delete(key):S.pick.add(key);S.pickLast=i;renderThumbs();return}
+    if(S.pick.size){S.pick.clear()}S.pickLast=i;gotoPage(i)});
+  $('#pickGo')?.addEventListener('click',()=>{const keys=S.doc.pages.map(pkey).filter(k=>S.pick.has(k));S.pick.clear();processDoc(S.doc.id,keys,{redo:true})});
+  $('#pickClr')?.addEventListener('click',()=>{S.pick.clear();renderThumbs()});
 }
 function setThumbRunning(i){const el=$(`#thumbs .th[data-i="${i}"]`);if(!el)return;el.querySelector('.st')?.remove();el.insertAdjacentHTML('beforeend','<span class="st run">…</span>')}
 function gotoPage(i){if(!S.doc)return;S.page=Math.max(0,Math.min(S.doc.pages.length-1,i));S.sel=-1;S.view=curPage()?.result?.pre?'proc':'image';renderAll();$(`#thumbs .th[data-i="${S.page}"]`)?.scrollIntoView({block:'nearest'})}
@@ -779,7 +803,16 @@ function gotoPage(i){if(!S.doc)return;S.page=Math.max(0,Math.min(S.doc.pages.len
 function renderViewer(){
   if(SEL.key&&SEL.key!==selKey())hideSel();
   const p=curPage();
-  $('#welcome').hidden=!!p;$('#stage').hidden=!p;
+  $('#welcome').hidden=!!p;$('#stage').hidden=!p||!!p?.pending;
+  const pv=$('#pendView');pv.hidden=!p?.pending;
+  if(p?.pending){
+    const has=!!FILEREF[S.doc.id]?.[p.path];
+    pv.innerHTML=`<div class="card">${ic('image')}<b>${esc(p.source||'')}</b><div class="muted">${S.page+1}쪽 · ${has?'아직 불러오지 않은 파일입니다':'원본 파일 연결이 끊겼습니다 (새로고침하면 다시 연결 필요)'}</div>
+      <div class="row" style="justify-content:center;margin-top:14px;gap:8px">${has?`<button class="btn primary" id="pvGo">${ic('play')}이 파일 변환</button><button class="btn" id="pvAll">${ic('scan')}여기부터 끝까지 변환</button>`:`<button class="btn primary" id="pvRe">${ic('folder')}같은 폴더 다시 선택</button>`}</div></div>`;
+    $('#pvGo')?.addEventListener('click',()=>processDoc(S.doc.id,[pkey(p)]));
+    $('#pvAll')?.addEventListener('click',()=>processDoc(S.doc.id,S.doc.pages.slice(S.page).filter(q=>q.pending||!q.result).map(pkey)));
+    $('#pvRe')?.addEventListener('click',()=>{S.reattach=S.doc.id;$('#folder').click()});
+  }
   $('#pgLabel').textContent=p?`${S.page+1} / ${S.doc.pages.length}`:'-';
   $('#vName').textContent=S.doc?.name||'';
   const hasProc=!!p?.result?.pre;
@@ -836,6 +869,7 @@ function renderText(){
   const p=curPage(),body=$('#textBody');
   if(!p){body.innerHTML='<div class="placeholder">문서를 추가하세요.</div>';return}
   const r=p.result;
+  if(p.pending){body.innerHTML=`<div class="placeholder">${ic('image')}<br>아직 불러오지 않은 파일입니다.<br><b>이 페이지 인식</b>을 누르면 불러와서 바로 변환합니다.</div>`;return}
   if(!r){body.innerHTML=`<div class="placeholder">${ic('scan')}<br>아직 인식하지 않은 페이지입니다.<br><b>이 페이지 인식</b>을 누르세요. <span class="muted">(Ctrl+Enter)</span></div>`;return}
   if(S.editMode==='full'){
     body.innerHTML='<textarea class="full" id="fullText" spellcheck="false"></textarea>';
@@ -886,10 +920,11 @@ async function runOcr(indices){
   if(S.doc&&S.doc.id===doc.id){renderAll();if(S.set.tpl&&!S.doc.fields?.edited)await ensureFields(true)}
   loadDocs();
 }
+function runThisPage(){if(!S.doc)return;const p=curPage();if(p?.pending)return processDoc(S.doc.id,[pkey(p)]);runOcr([S.page])}
 function runAllPages(){
   if(!S.doc)return;
   const todo=S.doc.pages.map((_,i)=>i).filter(i=>!S.doc.pages[i].result);
-  if(todo.length)return runOcr(todo);
+  if(todo.length)return processDoc(S.doc.id);
   const redo=S.doc.pages.map((_,i)=>i).filter(i=>S.doc.pages[i].result?.engine!=='pdf-text');
   if(!redo.length)return toast('PDF에 들어 있는 글자를 그대로 쓰고 있어 인식할 페이지가 없습니다');
   if(confirm(`모든 페이지(${redo.length}쪽)가 이미 인식되어 있습니다. 처음부터 다시 인식할까요?`))runOcr(redo);
@@ -1152,6 +1187,67 @@ async function saveAutoAsTemplate(){
     toast(`'${name}' 템플릿을 만들었습니다 (${fields.length}개 항목). 항목 편집에서 다듬을 수 있습니다`)}catch(e){toast(e.message,true)}
 }
 
+/* ---------- 한 장씩 불러오며 변환 (검수 프로그램 방식) ---------- */
+const FILEREF={};            // 문서별 { 상대경로: File } — 아직 불러오지 않은 쪽의 원본
+const pkey=p=>p.key||String(p.index);
+S.pick=new Set();S.pickLast=null;S.autoConv=store.get('autoConv',true);
+async function processDoc(docId,onlyKeys,opt={}){
+  if(S.running&&!opt.inner)return toast('이미 변환 중입니다',true);
+  if(S.set.engine==='ollama'&&!S.set.vlm){toast('AI 비전 모델을 선택하세요',true);return}
+  let doc=await api('/api/docs/'+docId);
+  const keys=onlyKeys||doc.pages.filter(p=>p.pending||!p.result).map(pkey);
+  const st={done:0,fails:0,rot:0,missing:0,total:keys.length,pages:0};
+  if(!keys.length){if(!opt.inner)toast('변환할 쪽이 없습니다');return st}
+  if(!opt.inner){S.stop=false;setRunning(true,0)}
+  const here=()=>S.doc&&S.doc.id===docId;
+  for(const key of keys){
+    if(S.stop)break;
+    let idx=doc.pages.findIndex(p=>pkey(p)===key);if(idx<0){st.done++;continue}
+    let p=doc.pages[idx],targets=[key];
+    $('#runPage').innerHTML=ic('loader','spin')+`변환 ${(opt.base||0)+st.done+1}/${opt.grand||st.total}`;
+    if(p.pending){
+      const f=FILEREF[docId]?.[p.path];
+      if(!f){st.missing++;st.done++;continue}
+      if(here()){S.page=idx;S.view='image';renderThumbs();setThumbRunning(idx);$(`#thumbs .th[data-i="${idx}"]`)?.scrollIntoView({block:'nearest'})}
+      try{const fd=new FormData();fd.append('key',key);fd.append('files',f,f.name);const r=await api(`/api/docs/${docId}/fill`,{method:'POST',body:fd});doc=r.doc;targets=r.keys;delete FILEREF[docId][p.path]}
+      catch(e){st.fails++;st.done++;if(st.fails<=3)toast(`${p.source}: ${e.message}`,true);continue}
+      if(here()){S.doc=doc;renderThumbs()}
+    }
+    for(const k of targets){
+      if(S.stop)break;
+      const i=doc.pages.findIndex(q=>pkey(q)===k);if(i<0||(doc.pages[i].result&&!opt.redo))continue;
+      if(here()){S.page=i;S.sel=-1;S.view='image';renderViewer();renderText();setThumbRunning(i);$(`#thumbs .th[data-i="${i}"]`)?.scrollIntoView({block:'nearest'})}
+      try{const pg=await api(`/api/docs/${docId}/ocr`,{json:ocrPayload(i)});doc.pages[i]=pg;st.pages++;if(pg.result?.pre?.rotate_fixed)st.rot++;
+        if(here()){S.doc.pages[i]=pg;if(S.page===i){S.view='proc';renderViewer();renderText()}renderThumbs()}}
+      catch(e){st.fails++;if(st.fails<=3)toast(`${i+1}쪽: ${e.message}`,true)}
+    }
+    st.done++;setRunning(true,((opt.base||0)+st.done)/(opt.grand||st.total));
+    $('#runPage').innerHTML=ic('loader','spin')+`변환 ${(opt.base||0)+st.done}/${opt.grand||st.total}`;
+    if(st.done%5===0)loadDocs();
+  }
+  if(S.set.tpl&&st.pages){try{const d=await api('/api/docs/'+docId);if(!d.fields?.edited){const f=await api(`/api/docs/${docId}/autofill`,{json:{template_id:S.set.tpl,model:S.set.llm||null}});if(here())S.doc.fields=f}}catch(e){}}
+  if(!opt.inner){setRunning(false);finishMsg(st);await loadDocs();if(here()){S.doc=await api('/api/docs/'+docId);renderAll();renderFields()}}
+  return st;
+}
+function finishMsg(st){
+  toast((S.stop?'중지했습니다 · ':'')+`${st.pages}쪽 변환 완료`+(st.rot?` · 돌아간 ${st.rot}쪽 바로 세움`:'')+(st.fails?` · 실패 ${st.fails}`:'')+(st.missing?` · 원본 연결 끊긴 파일 ${st.missing}개 (폴더 다시 선택 필요)`:''),!!(st.fails||st.missing)&&!st.pages);
+}
+async function processDocs(ids){
+  if(S.running)return toast('이미 변환 중입니다',true);
+  const docs=[];let grand=0;
+  for(const id of ids){const d=await api('/api/docs/'+id);const n=d.pages.filter(p=>p.pending||!p.result).length;if(n){docs.push(id);grand+=n}}
+  if(!grand)return toast('모든 문서가 이미 변환되어 있습니다');
+  S.stop=false;setRunning(true,0);const tot={done:0,fails:0,rot:0,missing:0,pages:0};
+  for(const id of docs){
+    if(S.stop)break;
+    if(!S.doc||S.doc.id!==id)await openDoc(id);
+    const st=await processDoc(id,null,{inner:true,base:tot.done,grand});
+    for(const k in tot)tot[k]+=st[k]||0;
+    await loadDocs();
+  }
+  setRunning(false);finishMsg(tot);if(S.doc){S.doc=await api('/api/docs/'+S.doc.id);renderAll();renderFields()}
+}
+
 /* ---------- 영역 선택 → 글자 복사 ---------- */
 const SEL={drag:null,box:null,key:null,space:false};
 S.tool=store.get('tool','select');
@@ -1310,6 +1406,17 @@ async function upload2(items,opts={}){
   const groups=[];
   if(opts.mode==='folder'){const m=new Map();for(const x of items){const k=dirOf(x.path)||'(최상위)';if(!m.has(k))m.set(k,[]);m.get(k).push(x)}for(const[k,v]of m)groups.push({name:k.split('/').pop()||k,items:v,merge:true})}
   else items.forEach(x=>groups.push({name:x.file.name,items:[x],merge:false}));
+  if(opts.mode==='folder'&&S.autoConv){ // 검수 프로그램처럼: 목록만 먼저 → 한 장씩 불러오며 변환
+    const ids=[];
+    for(const g of groups){
+      try{const doc=await api('/api/docs/lazy',{json:{name:g.name,files:g.items.map(x=>x.path)}});FILEREF[doc.id]=Object.fromEntries(g.items.map(x=>[x.path,x.file]));ids.push(doc.id)}
+      catch(e){toast(`${g.name}: ${e.message}`,true)}
+    }
+    await loadDocs(ids[0]);
+    toast(`파일 ${items.length}개 목록을 불러왔습니다 (문서 ${ids.length}개) — 한 장씩 불러오며 변환합니다`);
+    if(ids.length)processDocs(ids);
+    return;
+  }
   const bar=$('#upbar');bar.hidden=false;const total=items.length;let done=0;const ids=[];
   const t=document.createElement('div');t.className='toast';$('#toasts').append(t);
   const tick=()=>{t.innerHTML=ic('loader','spin')+`<span>파일 불러오는 중 ${done}/${total}</span>`;bar.firstElementChild.style.width=(done/total*100)+'%'};tick();
@@ -1365,6 +1472,7 @@ async function itemsFromDrop(dt){
 /* 여러 문서 한꺼번에 인식 */
 async function runDocs(ids){
   if(S.running)return toast('이미 인식 중입니다',true);
+  return processDocs(ids);
   if(S.set.engine==='ollama'&&!S.set.vlm)return toast('AI 비전 모델을 선택하세요',true);
   const jobs=[];
   for(const id of ids){const d=await api('/api/docs/'+id);d.pages.forEach((p,i)=>{if(!p.result)jobs.push([id,i])})}
@@ -1406,9 +1514,17 @@ function bind(){
   paintIcons();
   $('#drop').onclick=e=>{if(!e.target.closest('button'))$('#file').click()};
   $('#addFiles').onclick=()=>$('#file').click();
+  $('#autoConv').checked=S.autoConv;$('#autoConv').onchange=e=>{S.autoConv=e.target.checked;store.set('autoConv',S.autoConv)};
+  $('#autoConv').closest('label').onclick=e=>e.stopPropagation();
   $('#addFolder').onclick=()=>$('#folder').click();
   $('#file').onchange=e=>{upload(e.target.files);e.target.value=''};
-  $('#folder').onchange=e=>{const items=normItems([...e.target.files].map(f=>({file:f,path:f.webkitRelativePath||f.name})));e.target.value='';if(!items.length)return toast('폴더에 이미지·PDF가 없습니다',true);upload2(items,{mode:'folder'})};
+  $('#folder').onchange=e=>{
+    if(S.reattach){const id=S.reattach;S.reattach=null;const files=[...e.target.files];e.target.value='';
+      const d=S.doc?.id===id?S.doc:null;if(!d)return;const want=new Set(d.pages.filter(p=>p.pending).map(p=>p.path));
+      FILEREF[id]=FILEREF[id]||{};let n=0;for(const f of files){const pth=f.webkitRelativePath||f.name;if(want.has(pth)){FILEREF[id][pth]=f;n++}}
+      if(!n){const byName=new Map(files.map(f=>[f.name,f]));for(const p of d.pages.filter(p=>p.pending)){const f=byName.get(p.source);if(f){FILEREF[id][p.path]=f;n++}}}
+      toast(n?`대기 중인 ${n}개 파일을 다시 연결했습니다`:'맞는 파일을 찾지 못했습니다. 처음 넣었던 폴더를 선택하세요',!n);renderViewer();return}
+    const items=normItems([...e.target.files].map(f=>({file:f,path:f.webkitRelativePath||f.name})));e.target.value='';if(!items.length)return toast('폴더에 이미지·PDF가 없습니다',true);upload2(items,{mode:'folder'})};
   $('#fdGo').onclick=()=>{const mode=$('input[name=fdMode]:checked').value,ocr=$('#fdOcr').checked;$('#mFolder').classList.remove('on');const it=pendingFolder;pendingFolder=null;if(it)upload2(it,{mode,ocr})};
   $('#ocrAllDocs').onclick=()=>runDocs(S.docs.filter(d=>d.done<d.pages).map(d=>d.id));
   $('#delAllDocs').onclick=async()=>{if(!S.docs.length)return;if(!confirm(`작업 목록의 문서 ${S.docs.length}개를 모두 지울까요? (원본 파일은 그대로입니다)`))return;for(const d of S.docs)await api('/api/docs/'+d.id,{method:'DELETE'});S.doc=null;renderAll();renderFields();loadDocs();toast('목록을 비웠습니다')};
@@ -1442,7 +1558,7 @@ function bind(){
   $('#langSel').onchange=e=>{S.set.lang=e.target.value;saveSet()};
   $('#psmSel').onchange=e=>{S.set.psm=e.target.value;saveSet()};
   $$('#preChips .chip').forEach(c=>c.onclick=()=>{S.set.pre[c.dataset.k]=!S.set.pre[c.dataset.k];saveSet();renderSettings()});
-  $('#runPage').onclick=()=>runOcr([S.page]);
+  $('#runPage').onclick=runThisPage;
   $('#runAll').onclick=runAllPages;
   $('#runStop').onclick=()=>{S.stop=true;toast('현재 페이지까지만 처리하고 멈춥니다')};
   $$('#tabs button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;$$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.t));if(S.tab==='fields')ensureFields()});
@@ -1469,7 +1585,7 @@ function bind(){
   $('#btnTheme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;store.set('theme',t);setThemeIcon()};
   addEventListener('keydown',e=>{
     const typing=e.target.closest('input,textarea,select,[contenteditable]');
-    if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();runOcr([S.page]);return}
+    if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();runThisPage();return}
     if(typing)return;
     if(e.key==='ArrowRight'||e.key==='PageDown')gotoPage(S.page+1);
     if(e.key==='ArrowLeft'||e.key==='PageUp')gotoPage(S.page-1);
