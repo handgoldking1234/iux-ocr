@@ -248,30 +248,40 @@ function trimEdgeFragments(x, ox, oy, w, h) {
   x.fillStyle = '#fff';
   [bands[0], bands[bands.length - 1]].forEach(([a, b]) => { if ((a === 0 || b === h) && (b - a) < tall * 0.6) x.fillRect(ox, oy + a, w, b - a); });
 }
-async function detectRotation(c) {
+  async function detectRotation(c) {
+    // OSD는 표·도장 많은 한글 공문서에서 자주 틀림 → 힌트로만 쓰고, 실제로 읽어 보아 가장 또렷한 방향을 고른다
     const s = Math.min(1, 1600 / Math.max(c.width, c.height)), sm = canvas(Math.round(c.width * s), Math.round(c.height * s));
     sm.getContext('2d').drawImage(c, 0, 0, sm.width, sm.height);
-    let deg = 0, conf = 0;
-    try { const { data } = await (await osdWorker()).detect(sm); deg = ((data.orientation_degrees || 0) % 360 + 360) % 360; conf = data.orientation_confidence || 0; }
-    catch (e) { console.warn('방향 감지 실패', e); return 0; }
-    if (!deg || conf < 1.5) return 0;
-    // 표·도장 많은 문서에서 OSD가 자주 틀림 → 실제로 돌려 읽어 보고 확실히 더 잘 읽힐 때만 회전
-    try {
-      const base = await textScore(sm), turned = await textScore(rotateCw(sm, deg));
-      return turned >= Math.max(15, base * 1.3) ? deg : 0;
-    } catch (e) { return conf >= 6 ? deg : 0; }
+    let rot = 0, conf = 0;
+    try { const { data } = await (await osdWorker()).detect(sm); rot = ((data.orientation_degrees || 0) % 360 + 360) % 360; conf = data.orientation_confidence || 0; }
+    catch (e) { console.warn('방향 감지(OSD) 실패', e); }
+    if (rot === 0 && conf >= 2.5) return 0;
+    let base;
+    try { base = await textScore(sm); } catch (e) { return [90, 180, 270].includes(rot) && conf >= 6 ? rot : 0; }
+    if (base.good >= 10 && base.good >= base.tot * 0.6) return 0;
+    const cands = ([90, 180, 270].includes(rot) ? [rot] : []).concat([90, 270, 180].filter(r => r !== rot));
+    let best = 0, bestG = base.good;
+    for (const r of cands) {
+      let sc; try { sc = await textScore(rotateCw(sm, r)); } catch (e) { continue; }
+      if (sc.good >= Math.max(15, base.good * 1.5) && sc.good >= sc.tot * 0.5 && sc.good > bestG) {
+        best = r; bestG = sc.good;
+        if (sc.good >= sc.tot * 0.75) break;
+      }
+    }
+    return best;
   }
   async function textScore(c) {
     const s = Math.min(1, 1400 / Math.max(c.width, c.height)), sm = canvas(Math.round(c.width * s), Math.round(c.height * s));
     sm.getContext('2d').drawImage(c, 0, 0, sm.width, sm.height);
     const w = await worker('kor+eng');
-    await w.setParameters({ tessedit_pageseg_mode: '3' });
+    await w.setParameters({ tessedit_pageseg_mode: '6' }); // psm 3은 누운 글줄도 읽어 버려 판단이 흐려짐
     const { data } = await w.recognize(sm, {}, { text: false, blocks: true });
-    let n = 0;
+    let good = 0, tot = 0;
     (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l => (l.words || []).forEach(wd => {
-      if ((wd.confidence || 0) >= 65) n += (wd.text || '').replace(/[^가-힣A-Za-z0-9]/g, '').length;
+      const n = (wd.text || '').replace(/[^가-힣A-Za-z0-9]/g, '').length; if (!n) return;
+      tot += n; if ((wd.confidence || 0) >= 65) good += n;
     }))));
-    return n;
+    return { good, tot };
   }
   function rotateCw(c, deg) {
     deg = ((deg % 360) + 360) % 360; if (!deg) return c;

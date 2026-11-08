@@ -69,8 +69,8 @@ def estimate_skew(gray: np.ndarray) -> float:
 _ROT = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
 
 
-def _text_score(gray: np.ndarray) -> int | None:
-    """빠른 인식으로 '제대로 읽히는 글자 수'를 센다 (방향 검증용)."""
+def _text_score(gray: np.ndarray) -> tuple[int, int] | None:
+    """빠른 인식으로 (또렷하게 읽힌 글자 수, 전체 글자 수)를 센다 — 방향 판단용."""
     import re
     from . import engines
     try:
@@ -79,38 +79,60 @@ def _text_score(gray: np.ndarray) -> int | None:
         h, w = gray.shape[:2]
         s = min(1.0, 1400 / max(h, w))
         small = cv2.resize(gray, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1 else gray
-        _, tsv = engines._tess_txt_tsv(small, "kor+eng", 3)
+        _, tsv = engines._tess_txt_tsv(small, "kor+eng", 6)  # psm 3은 옆으로 누운 글줄도 알아서 읽어 버려 판단이 흐려짐
         d = engines._parse_tsv(tsv)
     except Exception:
         return None
-    score = 0
+    good = tot = 0
     for t, c in zip(d.get("text", []), d.get("conf", [])):
-        if isinstance(c, float) and c >= 65:
-            score += len(re.sub(r"[^가-힣A-Za-z0-9]", "", t or ""))
-    return score
+        n = len(re.sub(r"[^가-힣A-Za-z0-9]", "", t or ""))
+        if not n or not isinstance(c, float) or c < 0:
+            continue
+        tot += n
+        if c >= 65:
+            good += n
+    return good, tot
 
 
-def detect_orientation(gray: np.ndarray) -> int:
-    """Tesseract OSD로 90/180/270 회전 감지. 표·도장 많은 문서에서 OSD가 자주 틀리므로
-    실제로 돌려서 읽어 보고 확실히 더 잘 읽힐 때만 회전값을 돌려준다. 실패 시 0."""
-    rot, conf = 0, 0.0
+def _osd(gray: np.ndarray) -> tuple[int, float]:
     try:
         import pytesseract
-        osd = pytesseract.image_to_osd(gray, config="--psm 0")
-        for line in osd.splitlines():
+        rot, conf = 0, 0.0
+        for line in pytesseract.image_to_osd(gray, config="--psm 0").splitlines():
             if line.startswith("Rotate:"):
                 rot = int(line.split(":")[1].strip())
             elif line.startswith("Orientation confidence:"):
                 conf = float(line.split(":")[1].strip())
+        return rot, conf
     except Exception:
-        return 0
-    if rot not in _ROT or conf < 1.5:
+        return 0, 0.0
+
+
+def detect_orientation(gray: np.ndarray) -> int:
+    """돌아간 페이지(90/180/270) 감지.
+    Tesseract OSD는 표·도장 많은 한글 공문서에서 자주 틀리므로 힌트로만 쓰고,
+    실제로 읽어 보아 또렷하게 읽히지 않으면 다른 방향들로 돌려 읽어 가장 잘 읽히는 방향을 고른다."""
+    rot, conf = _osd(gray)
+    if rot == 0 and conf >= 2.5:
         return 0
     base = _text_score(gray)
-    turned = _text_score(cv2.rotate(gray, _ROT[rot]))
-    if base is None or turned is None:
-        return rot if conf >= 6 else 0
-    return rot if turned >= max(15, base * 1.3) else 0
+    if base is None:
+        return rot if rot in _ROT and conf >= 6 else 0
+    bg, bt = base
+    if bg >= 10 and bg >= bt * 0.6:  # 지금 방향으로 잘 읽힘
+        return 0
+    cands = ([rot] if rot in _ROT else []) + [r for r in (90, 270, 180) if r != rot]
+    best, best_g = 0, bg
+    for r in cands:
+        sc = _text_score(cv2.rotate(gray, _ROT[r]))
+        if not sc:
+            continue
+        g, t = sc
+        if g >= max(15, bg * 1.5) and g >= t * 0.5 and g > best_g:
+            best, best_g = r, g
+            if g >= t * 0.75:  # 확실하면 나머지 방향은 건너뜀
+                break
+    return best
 
 
 def preprocess(img: np.ndarray, opts: dict | None = None) -> tuple[np.ndarray, dict]:
