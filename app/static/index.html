@@ -177,6 +177,14 @@ select:focus,input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .ln .cf{flex:none;font-size:10.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--ok-bg);color:var(--ok);margin-top:2px}
 .ln .cf.low{background:var(--warn-bg);color:var(--warn)}
 .ln .cf.none{background:var(--panel-2);color:var(--text-3)}
+.ln .cp{flex:none;width:24px;height:22px;display:grid;place-items:center;border:0;background:transparent;border-radius:5px;color:var(--text-3);cursor:pointer;opacity:.35;margin-top:-1px}
+.ln .cp svg{width:14px;height:14px}
+.ln:hover .cp,.ln.sel .cp{opacity:1}
+.ln .cp:hover{background:var(--panel);color:var(--accent)}
+.ln .cp.ok{color:var(--ok);opacity:1}
+.autocp{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:var(--text-2);cursor:pointer;user-select:none;white-space:nowrap}
+.autocp input{margin:0;accent-color:var(--accent)}
+#overlay rect.bx{cursor:pointer}
 .gap{height:10px}
 textarea.full{flex:1;margin:0 14px 14px;border:1px solid var(--line);border-radius:10px;padding:12px;resize:none;outline:none;line-height:1.7;font-size:13.5px;background:var(--panel);min-height:240px}
 .banner{margin:0 14px 8px;padding:8px 10px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-size:12px;display:flex;gap:8px;align-items:center}
@@ -671,7 +679,7 @@ function paintIcons(root=document){root.querySelectorAll('[data-ic]').forEach(el
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LOW=70;
-function toast(msg,err=false){const t=document.createElement('div');t.className='toast'+(err?' err':'');t.innerHTML=ic(err?'x':'check')+`<span>${esc(msg)}</span>`;$('#toasts').append(t);setTimeout(()=>t.remove(),err?6000:2600);}
+function toast(msg,err=false){const t=document.createElement('div');t.className='toast'+(err?' err':'');t.innerHTML=ic(err?'x':'check')+`<span>${esc(msg)}</span>`;const box=$('#toasts');[...box.children].forEach(o=>{if(o.dataset.copy&&/복사/.test(msg))o.remove()});if(/복사/.test(msg))t.dataset.copy=1;while(box.children.length>=4)box.firstElementChild.remove();box.append(t);setTimeout(()=>t.remove(),err?6000:2600);}
 async function api(path,opt={}){
   if(window.WEB_API){try{return await window.WEB_API(path,opt)}catch(e){throw e instanceof Error?e:new Error(String(e))}}
   const o={...opt};delete o.raw;
@@ -836,12 +844,12 @@ function drawBoxes(){
   const p=curPage(),svg=$('#overlay');
   if(!p?.result||!S.boxes){svg.innerHTML='';return}
   svg.innerHTML=p.result.lines.map((l,i)=>l.box?`<rect class="bx ${l.conf!=null&&l.conf<LOW?'low':''} ${i===S.sel?'sel':''}" data-i="${i}" x="${l.box[0]}" y="${l.box[1]}" width="${l.box[2]}" height="${l.box[3]}"><title>${i+1}. ${esc(l.text)} (${l.conf??'-'})</title></rect>`:'').join('');
-  svg.querySelectorAll('rect').forEach(r=>r.onclick=()=>selectLine(+r.dataset.i,true));
+  svg.querySelectorAll('rect').forEach(r=>r.onclick=()=>{const i=+r.dataset.i;selectLine(i,true);openLinePop(i)});
 }
 function selectLine(i,fromBox=false){
   S.sel=i;drawBoxes();
   $$('.ln').forEach(el=>el.classList.toggle('sel',+el.dataset.i===i));
-  if(fromBox){if(S.editMode!=='lines'){S.editMode='lines';renderText()}const el=$(`.ln[data-i="${i}"]`);el?.scrollIntoView({block:'center',behavior:'smooth'});el?.querySelector('.tx')?.focus()}
+  if(fromBox){if(S.editMode!=='lines'){S.editMode='lines';renderText()}const el=$(`.ln[data-i="${i}"]`);el?.scrollIntoView({block:'center',behavior:'smooth'})}
   else{const r=$(`#overlay rect[data-i="${i}"]`);if(r){const v=$('#viewer'),st=$('#stage'),box=curPage().result.lines[i].box;const y=st.offsetTop+box[1]*st.offsetHeight-v.clientHeight/3;const x=st.offsetLeft+box[0]*st.offsetWidth-40;v.scrollTo({top:y,left:Math.max(0,x),behavior:'smooth'})}}
 }
 
@@ -857,9 +865,11 @@ function renderStats(){
    (low?`<span class="stat warn">확인 필요 <b>${low}줄</b></span>`:'')+
    (r.time_ms?`<span class="stat">${(r.time_ms/1000).toFixed(1)}초</span>`:'')+
    `<span class="sp"></span><div class="seg" id="modeSeg"><button data-m="lines" class="${S.editMode==='lines'?'on':''}">줄별</button><button data-m="full" class="${S.editMode==='full'?'on':''}">전체</button></div>`+
+   `<label class="autocp" title="켜면 왼쪽 인식 박스나 오른쪽 줄을 클릭만 해도 그 줄이 복사됩니다"><input type="checkbox" id="autoCopy" ${S.autoCopy?'checked':''}>자동 복사</label>`+
    `<button class="btn icon sm ghost" id="copyText" title="전체 복사">${ic('copy')}</button>`;
   $$('#modeSeg button').forEach(b=>b.onclick=()=>{S.editMode=b.dataset.m;store.set('editMode',S.editMode);renderText()});
-  $('#copyText').onclick=()=>{navigator.clipboard?.writeText(r.text).then(()=>toast('복사했습니다'),()=>toast('복사 실패',true))};
+  $('#copyText').onclick=()=>copyText(r.text,'전체 텍스트를 복사했습니다');
+  $('#autoCopy').onchange=e=>{S.autoCopy=e.target.checked;store.set('autoCopy',S.autoCopy);toast(S.autoCopy?'자동 복사 켜짐 — 줄을 클릭하면 바로 복사됩니다':'자동 복사 꺼짐')};
 }
 function renderText(){
   renderStats();
@@ -880,16 +890,38 @@ function renderText(){
   r.lines.forEach((l,i)=>{
     if(prev!==null&&l.block!==prev)h+='<div class="gap"></div>';prev=l.block;
     const lowc=l.conf!=null&&l.conf<LOW;
-    h+=`<div class="ln ${lowc?'low':''} ${i===S.sel?'sel':''}" data-i="${i}"><span class="n">${i+1}</span><div class="tx" contenteditable="plaintext-only" spellcheck="false">${esc(l.text)}</div><span class="cf ${l.conf==null?'none':lowc?'low':''}">${l.conf==null?'-':Math.round(l.conf)}</span></div>`;
+    h+=`<div class="ln ${lowc?'low':''} ${i===S.sel?'sel':''}" data-i="${i}"><span class="n">${i+1}</span><div class="tx" contenteditable="plaintext-only" spellcheck="false">${esc(l.text)}</div><span class="cf ${l.conf==null?'none':lowc?'low':''}">${l.conf==null?'-':Math.round(l.conf)}</span><button class="cp" title="이 줄 복사">${ic('copy')}</button></div>`;
   });
   h+='</div>';body.innerHTML=h;
   $('#toFull')?.addEventListener('click',()=>{S.editMode='full';renderText()});
   $$('.ln').forEach(el=>{
     const i=+el.dataset.i,tx=el.querySelector('.tx');
     tx.onfocus=()=>{if(S.sel!==i)selectLine(i)};
-    tx.oninput=()=>{r.lines[i].text=tx.innerText.replace(/\n/g,' ');if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage()};
+    tx.onmousedown=()=>{if(S.autoCopy)setTimeout(()=>{const sl=getSelection();if(!sl||sl.isCollapsed)copyLine(i,el)},0)};
+    el.querySelector('.cp').onclick=e=>{e.stopPropagation();selectLine(i);copyLine(i,el)};
+    tx.oninput=()=>{setLineText(i,tx.innerText.replace(/\n/g,' '),'list');if(SEL.line===i&&$('#spText'))$('#spText').value=r.lines[i].text};
     tx.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const n=$(`.ln[data-i="${i+1}"] .tx`);n?.focus()}};
   });
+}
+
+function setLineText(i,t,from){
+  const r=curPage()?.result;if(!r)return;const diverged=r.text!==linesToText(r.lines);
+  r.lines[i].text=t;if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage();
+  if(from!=='list'){const tx=$(`.ln[data-i="${i}"] .tx`);if(tx&&document.activeElement!==tx)tx.textContent=t}
+  const rc=$(`#overlay rect[data-i="${i}"] title`);if(rc)rc.textContent=`${i+1}. ${t}`;
+}
+function copyLine(i,el){
+  const t=curPage()?.result?.lines?.[i]?.text;if(t==null)return;
+  copyText(t,`${i+1}번째 줄을 복사했습니다`);
+  const b=(el||$(`.ln[data-i="${i}"]`))?.querySelector('.cp');if(b){b.classList.add('ok');b.innerHTML=ic('check');setTimeout(()=>{b.classList.remove('ok');b.innerHTML=ic('copy')},1200)}
+}
+/* 왼쪽 인식 박스 클릭 → 수정·복사 레이어 */
+function openLinePop(i){
+  const l=curPage()?.result?.lines?.[i];if(!l?.box)return;
+  const[x,y,w,h]=l.box;SEL.box=[x,y,x+w,y+h];SEL.key=selKey();SEL.line=i;
+  drawSelRect(SEL.box);
+  showSelPop(l.text,`${i+1}번째 줄${l.conf!=null?` · 신뢰도 ${Math.round(l.conf)}`:''}${S.autoCopy?' · 복사됨':''}`);
+  if(S.autoCopy)copyText(l.text,`${i+1}번째 줄을 복사했습니다`);
 }
 
 /* ---------- OCR 실행 ---------- */
@@ -1130,7 +1162,11 @@ function renderFields(){
   $$('#fList .fv').forEach(t=>{autosize(t);t.oninput=()=>{vals[+t.dataset.v].value=t.value;autosize(t);t.closest('.fc').classList.toggle('empty',!t.value);saveFields()}});
   $$('[data-cp]').forEach(b=>b.onclick=()=>copyField(+b.dataset.cp));
 }
-function copyText(t,msg){return navigator.clipboard.writeText(t).then(()=>toast(msg),()=>toast('복사 실패 — 브라우저 권한을 확인하세요',true))}
+function copyText(t,msg){
+  const fb=()=>{const ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;left:-9999px;top:0';document.body.appendChild(ta);const a=document.activeElement;ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();a?.focus?.({preventScroll:true});ok?toast(msg):toast('복사 실패 — 브라우저 권한을 확인하세요',true)};
+  if(!navigator.clipboard?.writeText){fb();return Promise.resolve()}
+  return navigator.clipboard.writeText(t).then(()=>toast(msg),fb);
+}
 function copyField(i){
   const v=S.doc.fields.values[i];copyText(v.value,`'${v.name}' 복사됨 — 시스템 칸에 Ctrl+V`);S.copied.add(i);renderFields();
   const el=$(`.fc[data-i="${i}"]`);el?.scrollIntoView({block:'nearest',behavior:'smooth'});el?.classList.add('flash');setTimeout(()=>el?.classList.remove('flash'),700);
@@ -1246,13 +1282,14 @@ async function processDocs(ids){
 }
 
 /* ---------- 영역 선택 → 글자 복사 ---------- */
-const SEL={drag:null,box:null,key:null,space:false};
+const SEL={drag:null,box:null,key:null,space:false,line:null};
+S.autoCopy=store.get('autoCopy',false);
 S.tool=store.get('tool','select');
 const selKey=()=>S.doc?`${S.doc.id}/${S.page}`:null;
 function setTool(t){S.tool=t;store.set('tool',t);$$('#toolSeg button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));$('#viewer').classList.toggle('selmode',t==='select');$('#viewer').classList.toggle('panmode',t==='pan')}
 function stagePt(e){const r=$('#stage').getBoundingClientRect();return[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]}
 function drawSelRect(b){const el=$('#selRect');el.hidden=false;el.style.left=b[0]*100+'%';el.style.top=b[1]*100+'%';el.style.width=(b[2]-b[0])*100+'%';el.style.height=(b[3]-b[1])*100+'%'}
-function hideSel(){SEL.box=null;SEL.key=null;$('#selRect').hidden=true;$('#selPop').hidden=true}
+function hideSel(){SEL.box=null;SEL.key=null;SEL.line=null;$('#selRect').hidden=true;$('#selPop').hidden=true}
 /* 선택 영역에 걸친 인식 줄 찾기. 줄의 일부만 잘렸으면 null(→ 영역 다시 인식) */
 function linesInBox(b){
   const L=curPage()?.result?.lines||[],hit=[];let partial=false;
@@ -1263,7 +1300,7 @@ function linesInBox(b){
   return{hit,partial};
 }
 async function onSelected(b){
-  SEL.box=b;SEL.key=selKey();
+  SEL.box=b;SEL.key=selKey();SEL.line=null;
   const p=curPage();const{hit,partial}=linesInBox(b);
   if(hit.length&&!partial){
     const L=p.result.lines;let prev=null,out=[];for(const i of hit){if(prev!==null&&L[i].block!==L[prev].block)out.push('');out.push(L[i].text);prev=i}
@@ -1279,23 +1316,35 @@ async function regionOcr(b,label){
 function showSelPop(text,label){
   const pop=$('#selPop'),st=$('#stage'),v=$('#viewer'),b=SEL.box;if(!b)return;
   const vals=S.doc?.fields?.values||[];
-  pop.innerHTML=`<div class="hd">${ic('copy')}<span>선택 영역</span><span class="muted" style="font-weight:600">${esc(label||'')}</span><span class="sp"></span><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
+  pop.innerHTML=`<div class="hd">${ic('copy')}<span>${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="muted" style="font-weight:600">${esc(label||'')}</span><span class="sp"></span><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
     ${text===null?`<div class="placeholder" style="padding:14px">${ic('loader','spin')} 인식 중…</div>`:`<textarea id="spText" spellcheck="false">${esc(text)}</textarea>`}
-    <div class="row"><button class="btn sm primary" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 (Ctrl+C)</button><button class="btn sm" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button></div>
+    <div class="row"><button class="btn sm primary" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 (Ctrl+C)</button><button class="btn sm" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button>${SEL.line!=null?'<span class="muted" style="font-size:11px;align-self:center">고치면 오른쪽 텍스트에도 반영</span>':''}</div>
     <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div>`;
   pop.hidden=false;
   const L=st.offsetLeft,T_=st.offsetTop,W=st.offsetWidth,H=st.offsetHeight;
-  let left=L+b[0]*W,top=T_+b[3]*H+8;
-  const maxL=v.scrollLeft+v.clientWidth-pop.offsetWidth-12;left=Math.max(v.scrollLeft+8,Math.min(left,maxL));
-  if(top+pop.offsetHeight>v.scrollTop+v.clientHeight-8)top=Math.max(v.scrollTop+8,T_+b[1]*H-pop.offsetHeight-8);
+  const PW=pop.offsetWidth,PH=pop.offsetHeight,vL=v.scrollLeft,vR=vL+v.clientWidth,vT=v.scrollTop,vB=vT+v.clientHeight;
+  let left,top;
+  // 문서 옆 여백에 띄워 다른 줄 박스를 가리지 않게 (여백이 없으면 선택 아래/위)
+  if(L+W+12+PW<=vR-8)left=L+W+12;else if(L-12-PW>=vL+8)left=L-12-PW;
+  if(left!=null){top=Math.max(vT+8,Math.min(T_+b[1]*H-10,vB-PH-8))}
+  else{
+    // 여백이 없으면 선택 위쪽 우선(아래 줄을 이어서 클릭할 수 있게), 자리가 없으면 아래
+    left=Math.max(vL+8,Math.min(L+b[0]*W,vR-PW-12));top=T_+b[1]*H-PH-8;
+    if(top<vT+8){ // 위에도 자리가 없으면 화면 오른쪽 아래 구석, 그게 선택을 가리면 선택 아래
+      left=vR-PW-14;top=vB-PH-14;
+      const bx0=L+b[0]*W,bx1=L+b[2]*W,by0=T_+b[1]*H,by1=T_+b[3]*H;
+      if(left<bx1&&left+PW>bx0&&top<by1&&top+PH>by0){left=Math.max(vL+8,Math.min(bx0,vR-PW-12));top=by1+8}
+    }
+  }
   pop.style.left=left+'px';pop.style.top=top+'px';
   $('#spX').onclick=hideSel;
-  $('#spRe').onclick=()=>regionOcr(b,'이 영역 인식');
+  $('#spRe').onclick=()=>{SEL.line=null;regionOcr(b,'이 영역 인식')};
+  $('#spText')?.addEventListener('input',e=>{if(SEL.line!=null)setLineText(SEL.line,e.target.value.replace(/\n/g,' '))});
   $('#spCopy').onclick=copySel;
   $('#spField').onchange=e=>putSelIntoField(e.target.value);
   $('#spText')?.addEventListener('keydown',e=>{if(e.key==='Escape')hideSel()});
 }
-function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(t,'선택 영역의 글자를 복사했습니다')}
+function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(t,SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
 async function putSelIntoField(sel){
   const t=$('#spText')?.value;if(!t||sel==='')return;const d=S.doc;
   if(!d.fields)d.fields={template_id:S.set.tpl||'',values:[],checked:false,edited:true};
@@ -1336,9 +1385,16 @@ function bindSelect(){
   });
   addEventListener('keydown',e=>{
     if(e.code==='Space'&&!e.target.closest('input,textarea,select,[contenteditable]')){if(!SEL.space){SEL.space=true;v.classList.add('panmode')}e.preventDefault()}
-    if((e.ctrlKey||e.metaKey)&&(e.key==='c'||e.key==='C')&&!$('#selPop').hidden){
+    if(e.key==='Escape'&&!$('#selPop').hidden&&!e.target.closest('.modal')){hideSel();return}
+    const inLn=e.target.closest&&e.target.closest('.ln');
+    if((e.ctrlKey||e.metaKey)&&(e.key==='c'||e.key==='C')&&!$('#selPop').hidden&&!inLn){
       const tgt=e.target.closest('input,textarea,[contenteditable]');
       if(!tgt||(tgt.id==='spText'&&tgt.selectionStart===tgt.selectionEnd)){e.preventDefault();copySel()}
+    }else if((e.ctrlKey||e.metaKey)&&(e.key==='c'||e.key==='C')&&S.tab==='text'&&S.sel>=0&&curPage()?.result?.lines?.[S.sel]){
+      // 선택한 줄: 글자를 따로 드래그하지 않았으면 줄 전체 복사
+      const tgt=e.target.closest('input,textarea,select,[contenteditable]'),sl=getSelection();
+      const inLine=tgt&&tgt.closest('.ln');
+      if((!tgt||inLine)&&(!sl||sl.isCollapsed)){e.preventDefault();copyLine(S.sel)}
     }
   });
   addEventListener('keyup',e=>{if(e.code==='Space'){SEL.space=false;v.classList.toggle('panmode',S.tool==='pan')}});
