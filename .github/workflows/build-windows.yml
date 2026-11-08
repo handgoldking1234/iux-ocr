@@ -39,7 +39,19 @@ jobs:
           New-Item -ItemType Directory -Force -Path build_extra | Out-Null
           Copy-Item $src build_extra\tesseract -Recurse -Force
           foreach ($l in @("kor", "eng", "osd")) {
-            Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata/raw/main/$l.traineddata" -OutFile "build_extra\tesseract\tessdata\$l.traineddata"
+            $out = "build_extra\tesseract\tessdata\$l.traineddata"
+            $urls = @("https://github.com/tesseract-ocr/tessdata/raw/main/$l.traineddata",
+                      "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/$l.traineddata",
+                      "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata@main/$l.traineddata")
+            $ok = $false
+            for ($try = 1; $try -le 4 -and -not $ok; $try++) {
+              foreach ($u in $urls) {
+                try { Invoke-WebRequest $u -OutFile $out -TimeoutSec 180; if ((Get-Item $out).Length -gt 100000) { $ok = $true; break } }
+                catch { Write-Host "다운로드 실패($try): $u - $($_.Exception.Message)" }
+              }
+              if (-not $ok) { Start-Sleep -Seconds (10 * $try) }
+            }
+            if (-not $ok) { throw "$l.traineddata 다운로드 실패" }
           }
           & build_extra\tesseract\tesseract.exe --list-langs
 
