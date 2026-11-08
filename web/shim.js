@@ -251,8 +251,27 @@ function trimEdgeFragments(x, ox, oy, w, h) {
 async function detectRotation(c) {
     const s = Math.min(1, 1600 / Math.max(c.width, c.height)), sm = canvas(Math.round(c.width * s), Math.round(c.height * s));
     sm.getContext('2d').drawImage(c, 0, 0, sm.width, sm.height);
-    try { const { data } = await (await osdWorker()).detect(sm); return data.orientation_confidence > 1.5 ? (data.orientation_degrees || 0) : 0; }
+    let deg = 0, conf = 0;
+    try { const { data } = await (await osdWorker()).detect(sm); deg = ((data.orientation_degrees || 0) % 360 + 360) % 360; conf = data.orientation_confidence || 0; }
     catch (e) { console.warn('방향 감지 실패', e); return 0; }
+    if (!deg || conf < 1.5) return 0;
+    // 표·도장 많은 문서에서 OSD가 자주 틀림 → 실제로 돌려 읽어 보고 확실히 더 잘 읽힐 때만 회전
+    try {
+      const base = await textScore(sm), turned = await textScore(rotateCw(sm, deg));
+      return turned >= Math.max(15, base * 1.3) ? deg : 0;
+    } catch (e) { return conf >= 6 ? deg : 0; }
+  }
+  async function textScore(c) {
+    const s = Math.min(1, 1400 / Math.max(c.width, c.height)), sm = canvas(Math.round(c.width * s), Math.round(c.height * s));
+    sm.getContext('2d').drawImage(c, 0, 0, sm.width, sm.height);
+    const w = await worker('kor+eng');
+    await w.setParameters({ tessedit_pageseg_mode: '3' });
+    const { data } = await w.recognize(sm, {}, { text: false, blocks: true });
+    let n = 0;
+    (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p => (p.lines || []).forEach(l => (l.words || []).forEach(wd => {
+      if ((wd.confidence || 0) >= 65) n += (wd.text || '').replace(/[^가-힣A-Za-z0-9]/g, '').length;
+    }))));
+    return n;
   }
   function rotateCw(c, deg) {
     deg = ((deg % 360) + 360) % 360; if (!deg) return c;

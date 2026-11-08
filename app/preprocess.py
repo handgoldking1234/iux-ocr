@@ -66,17 +66,51 @@ def estimate_skew(gray: np.ndarray) -> float:
     return round(best, 2)
 
 
+_ROT = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+
+
+def _text_score(gray: np.ndarray) -> int | None:
+    """빠른 인식으로 '제대로 읽히는 글자 수'를 센다 (방향 검증용)."""
+    import re
+    from . import engines
+    try:
+        if engines._tess_cmd is None:
+            engines.tesseract_info()
+        h, w = gray.shape[:2]
+        s = min(1.0, 1400 / max(h, w))
+        small = cv2.resize(gray, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1 else gray
+        _, tsv = engines._tess_txt_tsv(small, "kor+eng", 3)
+        d = engines._parse_tsv(tsv)
+    except Exception:
+        return None
+    score = 0
+    for t, c in zip(d.get("text", []), d.get("conf", [])):
+        if isinstance(c, float) and c >= 65:
+            score += len(re.sub(r"[^가-힣A-Za-z0-9]", "", t or ""))
+    return score
+
+
 def detect_orientation(gray: np.ndarray) -> int:
-    """Tesseract OSD로 90/180/270 회전 감지. 실패 시 0."""
+    """Tesseract OSD로 90/180/270 회전 감지. 표·도장 많은 문서에서 OSD가 자주 틀리므로
+    실제로 돌려서 읽어 보고 확실히 더 잘 읽힐 때만 회전값을 돌려준다. 실패 시 0."""
+    rot, conf = 0, 0.0
     try:
         import pytesseract
         osd = pytesseract.image_to_osd(gray, config="--psm 0")
         for line in osd.splitlines():
             if line.startswith("Rotate:"):
-                return int(line.split(":")[1].strip())
+                rot = int(line.split(":")[1].strip())
+            elif line.startswith("Orientation confidence:"):
+                conf = float(line.split(":")[1].strip())
     except Exception:
-        pass
-    return 0
+        return 0
+    if rot not in _ROT or conf < 1.5:
+        return 0
+    base = _text_score(gray)
+    turned = _text_score(cv2.rotate(gray, _ROT[rot]))
+    if base is None or turned is None:
+        return rot if conf >= 6 else 0
+    return rot if turned >= max(15, base * 1.3) else 0
 
 
 def preprocess(img: np.ndarray, opts: dict | None = None) -> tuple[np.ndarray, dict]:
@@ -87,7 +121,7 @@ def preprocess(img: np.ndarray, opts: dict | None = None) -> tuple[np.ndarray, d
     if o.get("orient"):
         rot = detect_orientation(gray)
         if rot:
-            code = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}.get(rot)
+            code = _ROT.get(rot)
             if code is not None:
                 gray = cv2.rotate(gray, code)
                 info["rotate"] = rot

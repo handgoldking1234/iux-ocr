@@ -337,7 +337,7 @@ table.fields td[contenteditable]{outline:none}
         <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         <b>여기에 끌어다 놓기</b><small>이미지 · PDF · TIFF · 폴더째로도 가능</small>
         <div class="btns"><button class="btn" id="addFiles" data-ic="file">파일 추가</button><button class="btn" id="addFolder" data-ic="folder">폴더 추가</button></div>
-        <label class="autoconv" title="폴더를 넣으면 파일 목록만 먼저 불러오고, 한 장씩 불러오면서 바로 텍스트로 변환"><input type="checkbox" id="autoConv">폴더는 목록만 → 한 장씩 바로 변환</label>
+        <label class="autoconv" title="폴더를 넣으면 파일 목록만 먼저 불러옵니다. '전체 페이지 인식'을 누르면 한 장씩 불러오면서 텍스트로 변환합니다"><input type="checkbox" id="autoConv">폴더는 목록만 먼저 (변환은 버튼으로)</label>
         <div class="upbar" id="upbar" hidden><i></i></div>
         <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf" hidden>
         <input type="file" id="folder" webkitdirectory directory multiple hidden>
@@ -1508,15 +1508,15 @@ async function upload2(items,opts={}){
   const groups=[];
   if(opts.mode==='folder'){const m=new Map();for(const x of items){const k=dirOf(x.path)||'(최상위)';if(!m.has(k))m.set(k,[]);m.get(k).push(x)}for(const[k,v]of m)groups.push({name:k.split('/').pop()||k,items:v,merge:true})}
   else items.forEach(x=>groups.push({name:x.file.name,items:[x],merge:false}));
-  if(opts.mode==='folder'&&S.autoConv){ // 검수 프로그램처럼: 목록만 먼저 → 한 장씩 불러오며 변환
+  if(opts.mode==='folder'&&S.autoConv){ // 검수 프로그램처럼: 목록만 먼저 → 변환 버튼을 누르면 한 장씩 불러오며 변환
     const ids=[];
     for(const g of groups){
       try{const doc=await api('/api/docs/lazy',{json:{name:g.name,files:g.items.map(x=>x.path)}});FILEREF[doc.id]=Object.fromEntries(g.items.map(x=>[x.path,x.file]));ids.push(doc.id)}
       catch(e){toast(`${g.name}: ${e.message}`,true)}
     }
     await loadDocs(ids[0]);
-    toast(`파일 ${items.length}개 목록을 불러왔습니다 (문서 ${ids.length}개) — 한 장씩 불러오며 변환합니다`);
-    if(ids.length)processDocs(ids);
+    if(opts.ocr&&ids.length){toast(`파일 ${items.length}개 목록을 불러왔습니다 — 한 장씩 불러오며 변환합니다`);processDocs(ids)}
+    else toast(`파일 ${items.length}개 목록을 불러왔습니다 (문서 ${ids.length}개) — '전체 페이지 인식'을 누르면 한 장씩 변환합니다${ids.length>1?" (모든 문서는 '모두 인식')":''}`);
     return;
   }
   const bar=$('#upbar');bar.hidden=false;const total=items.length;let done=0;const ids=[];
