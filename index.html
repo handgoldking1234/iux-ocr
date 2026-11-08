@@ -1512,11 +1512,11 @@ function applyWebMode(){
 function renderAll(){renderThumbs();renderViewer();renderText();renderRefine();setRunning(S.running)}
 function bind(){
   paintIcons();
-  $('#drop').onclick=e=>{if(!e.target.closest('button'))$('#file').click()};
-  $('#addFiles').onclick=()=>$('#file').click();
+  $('#drop').onclick=e=>{if(e.target.closest('button,input,label'))return;$('#file').click()};
+  $('#addFiles').onclick=e=>{e.stopPropagation();$('#file').click()};
   $('#autoConv').checked=S.autoConv;$('#autoConv').onchange=e=>{S.autoConv=e.target.checked;store.set('autoConv',S.autoConv)};
   $('#autoConv').closest('label').onclick=e=>e.stopPropagation();
-  $('#addFolder').onclick=()=>$('#folder').click();
+  $('#addFolder').onclick=e=>{e.stopPropagation();$('#folder').click()};
   $('#file').onchange=e=>{upload(e.target.files);e.target.value=''};
   $('#folder').onchange=e=>{
     if(S.reattach){const id=S.reattach;S.reattach=null;const files=[...e.target.files];e.target.value='';

@@ -92,6 +92,25 @@ def fix_syllable_spacing(text: str) -> str:
     return "\n".join(out_lines)
 
 
+_MEANINGFUL = re.compile(r"[가-힣A-Za-z0-9]")
+
+
+def drop_stray_lines(lines: list[tuple[str, float | None]]) -> list[str]:
+    """영역 인식 결과에서 선택 경계에 걸린 글자 조각(ㅇ, -, . 등) 줄을 버린다."""
+    out = []
+    for t, conf in lines:
+        t = (t or "").strip()
+        if not t:
+            continue
+        core = re.sub(r"\s+", "", t)
+        if not _MEANINGFUL.search(core):  # 자모·기호만 있는 줄
+            continue
+        if len(core) <= 2 and conf is not None and 0 <= conf < 55:  # 짧고 신뢰도 낮은 조각
+            continue
+        out.append(t)
+    return out
+
+
 def clean_text(text: str, merge_lines: bool = True, drop_page_no: bool = True, fix_spacing: bool = True) -> str:
     t = normalize(text)
     lines = t.splitlines()

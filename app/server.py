@@ -576,22 +576,54 @@ def api_ocr_region(doc_id: str, req: RegionReq):
     img = preprocess.load_bgr(str(path))
     h, w = img.shape[:2]
     x0, y0, x1, y1 = [max(0.0, min(1.0, v)) for v in (req.box + [0, 0, 1, 1])[:4]]
-    pad = 6
-    X0, Y0 = max(0, int(x0 * w) - pad), max(0, int(y0 * h) - pad)
-    X1, Y1 = min(w, int(x1 * w) + pad), min(h, int(y1 * h) + pad)
+    # 선택한 영역만 정확히 자르고(이웃 줄 침범 X) 바깥에 흰 여백을 둔다
+    X0, Y0 = int(x0 * w), int(y0 * h)
+    X1, Y1 = min(w, int(round(x1 * w))), min(h, int(round(y1 * h)))
     if X1 - X0 < 8 or Y1 - Y0 < 8:
         raise HTTPException(400, "선택 영역이 너무 작습니다.")
-    crop = img[Y0:Y1, X0:X1]
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    crop = img[Y0:Y1, X0:X1].copy()
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop.copy()
+    _trim_edge_fragments(gray, crop)
     if gray.shape[0] < 120:  # 작은 영역은 키워서 인식률 올림
         s_ = min(3.0, 120 / max(1, gray.shape[0]))
         gray = cv2.resize(gray, None, fx=s_, fy=s_, interpolation=cv2.INTER_CUBIC)
         crop = cv2.resize(crop, None, fx=s_, fy=s_, interpolation=cv2.INTER_CUBIC)
+    m = 16
+    gray = cv2.copyMakeBorder(gray, m, m, m, m, cv2.BORDER_CONSTANT, value=255)
+    crop = cv2.copyMakeBorder(crop, m, m, m, m, cv2.BORDER_CONSTANT, value=(255, 255, 255) if crop.ndim == 3 else 255)
     try:
         res = engines.run_engine(req.engine, gray, crop, req.lang, 6, req.model)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"영역 인식 실패: {e}") from e
-    return {"text": res["text"], "mean_conf": res.get("mean_conf")}
+    if res.get("lines"):
+        text = "\n".join(refine.drop_stray_lines([(l.get("text", ""), l.get("conf")) for l in res["lines"]]))
+    else:
+        text = "\n".join(refine.drop_stray_lines([(t, None) for t in (res.get("text") or "").splitlines()]))
+    return {"text": text, "mean_conf": res.get("mean_conf")}
+
+
+def _trim_edge_fragments(gray, crop) -> None:
+    """선택 위/아래 경계에 걸쳐 잘린 옆 줄 글자 조각을 흰색으로 지운다 (제자리 수정)."""
+    h = gray.shape[0]
+    if h < 12:
+        return
+    _, ink = cv2.threshold(gray, 0, 1, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    rows = ink.sum(axis=1) > max(1, gray.shape[1] * 0.002)
+    bands, start = [], None
+    for i, r in enumerate(rows):
+        if r and start is None:
+            start = i
+        elif not r and start is not None:
+            bands.append((start, i)); start = None
+    if start is not None:
+        bands.append((start, h))
+    if len(bands) < 2:
+        return
+    tallest = max(b - a for a, b in bands)
+    for a, b in (bands[0], bands[-1]):
+        if (a == 0 or b == h) and (b - a) < tallest * 0.6:
+            gray[a:b] = 255
+            crop[a:b] = 255
 
 
 @app.put("/api/docs/{doc_id}/pages/{idx}")

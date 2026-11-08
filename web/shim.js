@@ -232,7 +232,23 @@
     if (!osdW) osdW = Tesseract.createWorker('osd', 0, { workerPath: BASE + 'worker.min.js', corePath: BASE + 'core/', langPath: BASE + 'lang', gzip: true, legacyCore: true, legacyLang: true });
     return osdW;
   }
-  async function detectRotation(c) {
+  // 선택 위/아래 경계에 걸쳐 잘린 옆 줄 글자 조각(ㅇ 등)을 흰색으로 지움
+function trimEdgeFragments(x, ox, oy, w, h) {
+  if (h < 12) return;
+  const img = x.getImageData(ox, oy, w, h), d = img.data, lum = new Uint8Array(w * h);
+  let sum = 0;
+  for (let i = 0; i < w * h; i++) { const v = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000; lum[i] = v; sum += v; }
+  const th = Math.min(160, (sum / (w * h)) * 0.75), minInk = Math.max(1, w * 0.002), rows = [];
+  for (let y = 0; y < h; y++) { let n = 0; for (let k = y * w, e = k + w; k < e; k++) if (lum[k] < th) n++; rows.push(n > minInk); }
+  const bands = []; let st = -1;
+  rows.forEach((r, i) => { if (r && st < 0) st = i; else if (!r && st >= 0) { bands.push([st, i]); st = -1; } });
+  if (st >= 0) bands.push([st, h]);
+  if (bands.length < 2) return;
+  const tall = Math.max(...bands.map(([a, b]) => b - a));
+  x.fillStyle = '#fff';
+  [bands[0], bands[bands.length - 1]].forEach(([a, b]) => { if ((a === 0 || b === h) && (b - a) < tall * 0.6) x.fillRect(ox, oy + a, w, b - a); });
+}
+async function detectRotation(c) {
     const s = Math.min(1, 1600 / Math.max(c.width, c.height)), sm = canvas(Math.round(c.width * s), Math.round(c.height * s));
     sm.getContext('2d').drawImage(c, 0, 0, sm.width, sm.height);
     try { const { data } = await (await osdWorker()).detect(sm); return data.orientation_confidence > 1.5 ? (data.orientation_degrees || 0) : 0; }
@@ -411,21 +427,23 @@
       const key = pk(d.pages[i]);
       const k = body.view === 'proc' && await getBlob(`${d.id}/proc/${key}`) ? 'proc' : 'image';
       const src = await blobToCanvas(await getBlob(`${d.id}/${k}/${key}`));
-      const [x0, y0, x1, y1] = body.box, pad = 6;
-      const X0 = Math.max(0, Math.floor(x0 * src.width) - pad), Y0 = Math.max(0, Math.floor(y0 * src.height) - pad);
-      const X1 = Math.min(src.width, Math.ceil(x1 * src.width) + pad), Y1 = Math.min(src.height, Math.ceil(y1 * src.height) + pad);
+      const [x0, y0, x1, y1] = body.box;
+      const X0 = Math.max(0, Math.floor(x0 * src.width)), Y0 = Math.max(0, Math.floor(y0 * src.height));
+      const X1 = Math.min(src.width, Math.round(x1 * src.width)), Y1 = Math.min(src.height, Math.round(y1 * src.height));
       if (X1 - X0 < 8 || Y1 - Y0 < 8) fail('선택 영역이 너무 작습니다.');
-      const sc = (Y1 - Y0) < 120 ? Math.min(3, 120 / (Y1 - Y0)) : 1;
-      const c = canvas(Math.round((X1 - X0) * sc), Math.round((Y1 - Y0) * sc)), x = c.getContext('2d');
+      const sc = (Y1 - Y0) < 120 ? Math.min(3, 120 / (Y1 - Y0)) : 1, M = 16;
+      const cw = Math.round((X1 - X0) * sc), ch = Math.round((Y1 - Y0) * sc);
+      const c = canvas(cw + M * 2, ch + M * 2), x = c.getContext('2d');
       x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.imageSmoothingQuality = 'high';
-      x.drawImage(src, X0, Y0, X1 - X0, Y1 - Y0, 0, 0, c.width, c.height);
+      x.drawImage(src, X0, Y0, X1 - X0, Y1 - Y0, M, M, cw, ch);
+      trimEdgeFragments(x, M, M, cw, ch);
       const lang = ['kor+eng', 'kor', 'eng'].includes(body.lang) ? body.lang : 'kor+eng';
       const w = await worker(lang);
       await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
       const { data } = await w.recognize(c, {}, { text: true, blocks: true });
-      const lines = [];
-      (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(l => { let t = (l.text || '').trim(); if (t) { if (R.looksSplit(t)) t = R.fixSyllableSpacing(t); lines.push(t); } })));
-      return { text: lines.join('\n'), mean_conf: data.confidence };
+      const raw = [];
+      (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(l => { let t = (l.text || '').trim(); if (t) { if (R.looksSplit(t)) t = R.fixSyllableSpacing(t); raw.push([t, l.confidence]); } })));
+      return { text: R.dropStrayLines(raw).join('\n'), mean_conf: data.confidence };
     }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/pages\/(\d+)$/))) {
       const d = await getDoc(m[1]), pg = d.pages[+m[2]];

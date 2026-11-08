@@ -56,6 +56,17 @@
     }).join('\n');
   };
 
+  R.dropStrayLines = function (lines) {
+    const out = [];
+    lines.forEach(([t, conf]) => {
+      t = (t || '').trim(); if (!t) return;
+      const core = t.replace(/\s+/g, '');
+      if (!/[가-힣A-Za-z0-9]/.test(core)) return;
+      if (core.length <= 2 && conf != null && conf >= 0 && conf < 55) return;
+      out.push(t);
+    });
+    return out;
+  };
   R.looksSplit = function (t) {
     const toks = t.split(/\s+/).filter(Boolean);
     const singles = toks.filter(x => x.length === 1 && x >= '가' && x <= '힣').length;
