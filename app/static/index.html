@@ -869,7 +869,7 @@ function renderStats(){
    `<button class="btn icon sm ghost" id="copyText" title="전체 복사">${ic('copy')}</button>`;
   $$('#modeSeg button').forEach(b=>b.onclick=()=>{S.editMode=b.dataset.m;store.set('editMode',S.editMode);renderText()});
   $('#copyText').onclick=()=>copyText(r.text,'전체 텍스트를 복사했습니다');
-  $('#autoCopy').onchange=e=>{S.autoCopy=e.target.checked;store.set('autoCopy',S.autoCopy);toast(S.autoCopy?'자동 복사 켜짐 — 줄을 클릭하면 바로 복사됩니다':'자동 복사 꺼짐')};
+  $('#autoCopy').onchange=e=>setAutoCopy(e.target.checked);
 }
 function renderText(){
   renderStats();
@@ -909,6 +909,11 @@ function setLineText(i,t,from){
   r.lines[i].text=t;if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage();
   if(from!=='list'){const tx=$(`.ln[data-i="${i}"] .tx`);if(tx&&document.activeElement!==tx)tx.textContent=t}
   const rc=$(`#overlay rect[data-i="${i}"] title`);if(rc)rc.textContent=`${i+1}. ${t}`;
+}
+function setAutoCopy(on,fromPop){
+  S.autoCopy=on;store.set('autoCopy',on);
+  const a=$('#autoCopy');if(a)a.checked=on;const b=$('#spAuto');if(b)b.checked=on;
+  if(on&&fromPop)copySel();else toast(on?'자동 복사 켜짐 — 박스나 줄을 클릭하면 바로 복사됩니다':'자동 복사 꺼짐');
 }
 function copyLine(i,el){
   const t=curPage()?.result?.lines?.[i]?.text;if(t==null)return;
@@ -1316,7 +1321,7 @@ async function regionOcr(b,label){
 function showSelPop(text,label){
   const pop=$('#selPop'),st=$('#stage'),v=$('#viewer'),b=SEL.box;if(!b)return;
   const vals=S.doc?.fields?.values||[];
-  pop.innerHTML=`<div class="hd">${ic('copy')}<span>${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="muted" style="font-weight:600">${esc(label||'')}</span><span class="sp"></span><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
+  pop.innerHTML=`<div class="hd">${ic('copy')}<span>${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="muted" style="font-weight:600">${esc(label||'')}</span><span class="sp"></span><label class="autocp" title="켜면 박스·줄을 클릭만 해도 바로 복사"><input type="checkbox" id="spAuto" ${S.autoCopy?'checked':''}>자동 복사</label><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
     ${text===null?`<div class="placeholder" style="padding:14px">${ic('loader','spin')} 인식 중…</div>`:`<textarea id="spText" spellcheck="false">${esc(text)}</textarea>`}
     <div class="row"><button class="btn sm primary" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 (Ctrl+C)</button><button class="btn sm" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button>${SEL.line!=null?'<span class="muted" style="font-size:11px;align-self:center">고치면 오른쪽 텍스트에도 반영</span>':''}</div>
     <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div>`;
@@ -1338,6 +1343,7 @@ function showSelPop(text,label){
   }
   pop.style.left=left+'px';pop.style.top=top+'px';
   $('#spX').onclick=hideSel;
+  $('#spAuto').onchange=e=>setAutoCopy(e.target.checked,true);
   $('#spRe').onclick=()=>{SEL.line=null;regionOcr(b,'이 영역 인식')};
   $('#spText')?.addEventListener('input',e=>{if(SEL.line!=null)setLineText(SEL.line,e.target.value.replace(/\n/g,' '))});
   $('#spCopy').onclick=copySel;
