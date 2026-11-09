@@ -324,11 +324,85 @@ function trimEdgeFragments(x, ox, oy, w, h) {
       const bb = l.bbox;
       lines.push({ text, conf: Math.round(l.confidence * 10) / 10, box: [bb.x0 / W, bb.y0 / H, (bb.x1 - bb.x0) / W, (bb.y1 - bb.y0) / H], block: bi * 100 + pi });
     })));
+    let second = null;
+    if ((req.pre || {}).second !== false) second = await secondPass(pc, lines, w, lang, req.fix_spacing !== false);
+    await w.setParameters({ tessedit_pageseg_mode: String(req.psm || 4), preserve_interword_spaces: '1' });
     const confs = lines.map(l => l.conf).filter(c => c != null);
-    p.result = { engine: 'tesseract', lines, text: R.linesToText(lines), mean_conf: confs.length ? Math.round(confs.reduce((a, b) => a + b, 0) / confs.length * 10) / 10 : null,
+    p.result = { engine: 'tesseract', lines, text: R.linesToText(lines), second, mean_conf: confs.length ? Math.round(confs.reduce((a, b) => a + b, 0) / confs.length * 10) / 10 : null,
       time_ms: Math.round(performance.now() - t0), pre: info, lang, at: Date.now() / 1000 };
     delete p.pdf_text;
     return p;
+  }
+
+  /* ---------------- 2차 인식 ----------------
+     신뢰도 낮은 줄만 잘라 키우고(작은 글씨)·가로로 늘리고(길쭉한 글씨)·획을 굵혀(얇은 글씨)
+     여러 버전을 한 장에 모아 한 번에 다시 읽고, 가장 또렷한 버전이 확실히 나을 때만 바꾼다 */
+  const SECOND = { conf: 80, max: 60, h: 64, variants: [[1, 0], [1.4, 0], [1.8, 0], [1.6, 1]] };
+  const nrm = t => (t || '').replace(/\s+/g, '');
+  const cnt = (t, rx) => ((t || '').match(rx) || []).length;
+  function thicken(c) { // 2x2 최소값 필터 = 검은 획을 1px 굵게
+    const x = c.getContext('2d'), im = x.getImageData(0, 0, c.width, c.height), d = im.data, W = c.width, H = c.height, o = new Uint8ClampedArray(d);
+    for (let y = 0; y < H; y++) for (let i = 0; i < W; i++) {
+      let m = 255; for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const xx = Math.min(W - 1, i + dx), yy = Math.min(H - 1, y + dy); m = Math.min(m, d[(yy * W + xx) * 4]); }
+      const k = (y * W + i) * 4; o[k] = o[k + 1] = o[k + 2] = m;
+    }
+    im.data.set(o); x.putImageData(im, 0, 0); return c;
+  }
+  async function secondPass(pc, lines, w, lang, fixSp) {
+    const W = pc.width, H = pc.height;
+    const cand = lines.map((l, i) => i).filter(i => lines[i].box && (lines[i].conf == null || lines[i].conf < SECOND.conf) && nrm(lines[i].text).length)
+      .sort((a, b) => (lines[a].conf || 0) - (lines[b].conf || 0)).slice(0, SECOND.max);
+    if (!cand.length) return null;
+    const tiles = [], slots = [], gap = 28; let y = 0;
+    for (const i of cand) {
+      const [bx, by, bw, bh] = lines[i].box, padx = Math.round(bh * H * 0.5), pady = Math.round(bh * H * 0.25);
+      const X0 = Math.max(0, Math.floor(bx * W) - padx), Y0 = Math.max(0, Math.floor(by * H) - pady);
+      const X1 = Math.min(W, Math.round((bx + bw) * W) + padx), Y1 = Math.min(H, Math.round((by + bh) * H) + pady);
+      if (X1 - X0 < 6 || Y1 - Y0 < 6) continue;
+      const sc = Math.max(1, Math.min(4, SECOND.h / (Y1 - Y0))), cw = Math.round((X1 - X0) * sc), ch = Math.round((Y1 - Y0) * sc);
+      const base = canvas(cw, ch), bx2 = base.getContext('2d');
+      bx2.fillStyle = '#fff'; bx2.fillRect(0, 0, cw, ch); bx2.drawImage(pc, X0, Y0, X1 - X0, Y1 - Y0, 0, 0, cw, ch);
+      trimEdgeFragments(bx2, 0, 0, cw, ch);
+      for (let v = 0; v < SECOND.variants.length; v++) {
+        const [sx, th] = SECOND.variants[v], g = canvas(Math.round(cw * sx), ch), gx = g.getContext('2d');
+        gx.fillStyle = '#fff'; gx.fillRect(0, 0, g.width, ch); gx.imageSmoothingQuality = 'high'; gx.drawImage(base, 0, 0, g.width, ch);
+        if (th) thicken(g);
+        tiles.push(g); slots.push([i, v, y + gap, y + gap + ch]); y += gap + ch;
+      }
+    }
+    if (!tiles.length) return null;
+    const TW = Math.max(...tiles.map(t => t.width)) + 32, sheet = canvas(TW, y + gap), sx_ = sheet.getContext('2d');
+    sx_.fillStyle = '#fff'; sx_.fillRect(0, 0, TW, sheet.height);
+    tiles.forEach((t, k) => sx_.drawImage(t, 16, slots[k][2]));
+    await w.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    const { data } = await w.recognize(sheet, {}, { text: false, blocks: true });
+    const got = new Map();
+    (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(pa => (pa.lines || []).forEach(l => {
+      const t = (l.text || '').trim(); if (!nrm(t)) return;
+      const cy = (l.bbox.y0 + l.bbox.y1) / 2, sl = slots.find(([, , a, b2]) => cy >= a - gap / 2 && cy <= b2 + gap / 2);
+      if (!sl) return; const key = sl[0] + ':' + sl[1];
+      if (!got.has(key)) got.set(key, { i: sl[0], ls: [] }); got.get(key).ls.push({ t, c: l.confidence, x: l.bbox.x0 });
+    })));
+    const best = new Map();
+    for (const { i, ls } of got.values()) {
+      ls.sort((a, b) => a.x - b.x);
+      let nt = R.dropStrayLines(ls.map(l => [l.t, l.c])).join(' ').trim();
+      if (!nt) continue;
+      if (!(lines[i].text || '').includes('  ')) nt = nt.replace(/ {2,}/g, ' ');
+      if (fixSp && lang.includes('kor') && R.looksSplit(nt)) nt = R.fixSyllableSpacing(nt);
+      const n = ls.reduce((a, l) => a + nrm(l.t).length, 0); if (!n) continue;
+      const nc = ls.reduce((a, l) => a + l.c * nrm(l.t).length, 0) / n;
+      if (!best.has(i) || nc > best.get(i).nc) best.set(i, { nt, nc });
+    }
+    let improved = 0;
+    for (const [i, { nt, nc }] of best) {
+      const o = lines[i], oc = o.conf || 0, on = nrm(o.text).length, nn = nrm(nt).length;
+      if (nc < 60 || nc < oc + 5) continue;
+      if (on && !(nn >= on * 0.6 && nn <= on * 1.6 + 2)) continue;
+      if (cnt(nt, /[가-힣]/g) < cnt(o.text, /[가-힣]/g) - 1 || cnt(nt, /[A-Za-z]/g) > cnt(o.text, /[A-Za-z]/g) + 2) continue;
+      o.text_1st = o.text; o.conf_1st = o.conf; o.text = nt; o.conf = Math.round(nc * 10) / 10; o.second = true; improved++;
+    }
+    return { tried: cand.length, improved };
   }
 
   /* ---------------- 템플릿·항목 ---------------- */

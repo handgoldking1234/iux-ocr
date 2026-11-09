@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import cv2
+import numpy as np
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
@@ -218,6 +219,8 @@ def ocr_page(doc: dict, idx: int, engine: str, lang: str, psm: int, model: str |
         info["rotate_fixed"] = info.pop("rotate")
     preprocess.save_png(str(d / p["proc"]), gray)
     res = engines.run_engine(engine, gray, color, lang, psm, model, fix_spacing)
+    if (pre or {}).get("second", True):
+        res = second_pass(res, gray, engine, lang, model)
     res["pre"] = info
     res["lang"] = lang
     res["at"] = time.time()
@@ -600,6 +603,127 @@ def api_ocr_region(doc_id: str, req: RegionReq):
     else:
         text = "\n".join(refine.drop_stray_lines([(t, None) for t in (res.get("text") or "").splitlines()]))
     return {"text": text, "mean_conf": res.get("mean_conf")}
+
+
+SECOND_CONF = 80      # 이 신뢰도 미만인 줄만 2차 인식
+SECOND_MAX = 60       # 한 페이지에서 다시 읽을 최대 줄 수
+SECOND_H = 64         # 다시 읽을 때 줄 높이(px) — 작은·얇은 글씨는 키워서 읽음
+
+
+_HANGUL = re.compile(r"[가-힣]")
+_LATIN = re.compile(r"[A-Za-z]")
+
+
+def _count(t: str | None, rx) -> int:
+    return len(rx.findall(t or ""))
+
+
+def _norm(t: str) -> str:
+    return re.sub(r"\s+", "", t or "")
+
+
+# 2차 인식 변형: (가로 늘림 배율, 획 굵게) — 길쭉·얇은 글씨는 가로로 늘리고 획을 굵히면 크게 좋아짐
+SECOND_VARIANTS = [(1.0, False), (1.4, False), (1.8, False), (1.6, True)]
+
+
+def second_pass(res: dict, gray, engine: str, lang: str, model: str | None) -> dict:
+    """2차 인식: 신뢰도 낮은 줄만 잘라 키우고(작은 글씨), 가로로 늘리고(길쭉한 글씨), 획을 굵혀(얇은 글씨)
+    여러 버전을 한 장에 모아 한 번에 다시 읽은 뒤, 가장 또렷하게 읽힌 버전이 확실히 나을 때만 바꾼다."""
+    if engine != "tesseract" or not res.get("lines"):
+        return res
+    lines = res["lines"]
+    H, W = gray.shape[:2]
+    cand = [i for i, l in enumerate(lines)
+            if l.get("box") and (l.get("conf") is None or l["conf"] < SECOND_CONF) and len(_norm(l.get("text"))) >= 1]
+    cand = sorted(cand, key=lambda i: lines[i].get("conf") or 0)[:SECOND_MAX]
+    if not cand:
+        return res
+    tiles, slots, y, gap = [], [], 0, 28
+    kernel = np.ones((2, 2), np.uint8)
+    for i in cand:
+        x, yy, w, h = lines[i]["box"]
+        padx, pady = int(h * H * 0.5), int(h * H * 0.25)
+        X0, Y0 = max(0, int(x * W) - padx), max(0, int(yy * H) - pady)
+        X1, Y1 = min(W, int(round((x + w) * W)) + padx), min(H, int(round((yy + h) * H)) + pady)
+        if X1 - X0 < 6 or Y1 - Y0 < 6:
+            continue
+        g0 = gray[Y0:Y1, X0:X1].copy()
+        _trim_edge_fragments(g0, g0)
+        s_ = max(1.0, min(4.0, SECOND_H / max(1, g0.shape[0])))
+        if s_ > 1.0:
+            g0 = cv2.resize(g0, None, fx=s_, fy=s_, interpolation=cv2.INTER_CUBIC)
+        for v, (sx, thick) in enumerate(SECOND_VARIANTS):
+            g = cv2.resize(g0, None, fx=sx, fy=1, interpolation=cv2.INTER_CUBIC) if sx != 1 else g0
+            if thick:
+                g = cv2.erode(g, kernel)
+            tiles.append(g)
+            slots.append((i, v, y + gap, y + gap + g.shape[0]))
+            y += gap + g.shape[0]
+    if not tiles:
+        return res
+    TW = max(t.shape[1] for t in tiles) + 32
+    sheet = np.full((y + gap, TW), 255, np.uint8)
+    for g, (_, _, a, b) in zip(tiles, slots):
+        sheet[a:b, 16:16 + g.shape[1]] = g
+    try:
+        r2 = engines.run_engine("tesseract", sheet, cv2.cvtColor(sheet, cv2.COLOR_GRAY2BGR), lang, 6, model)
+    except Exception:
+        return res
+    SH = sheet.shape[0]
+    got: dict[tuple, list] = {}
+    for l in r2.get("lines") or []:
+        if not l.get("box") or not _norm(l.get("text")):
+            continue
+        cy = (l["box"][1] + l["box"][3] / 2) * SH
+        for i, v, a, b in slots:
+            if a - gap / 2 <= cy <= b + gap / 2:
+                got.setdefault((i, v), []).append(l)
+                break
+    best: dict[int, tuple] = {}
+    for (i, v), ls in got.items():
+        ls.sort(key=lambda l: l["box"][0])
+        new = " ".join(refine.drop_stray_lines([(l["text"], l.get("conf")) for l in ls])).strip()
+        if "  " not in (lines[i].get("text") or ""):
+            new = re.sub(r" {2,}", " ", new)
+        confs = [(l["conf"], len(_norm(l["text"]))) for l in ls if l.get("conf") is not None]
+        n = sum(k for _, k in confs)
+        if not new or not n:
+            continue
+        nc = sum(c * k for c, k in confs) / n
+        if i not in best or nc > best[i][1]:
+            best[i] = (new, nc, v)
+    improved = 0
+    for i, (new, nc, v) in best.items():
+        old = lines[i]
+        oc = old.get("conf") or 0
+        on, nn = len(_norm(old.get("text"))), len(_norm(new))
+        if nc < 60 or nc < oc + 5:
+            continue
+        if on and not (on * 0.6 <= nn <= on * 1.6 + 2):
+            continue
+        # 신뢰도만 높은 엉터리(영문 대문자 조합 등) 방지: 한글이 줄거나 영문이 늘면 버림
+        ok_, nk = _count(old.get("text"), _HANGUL), _count(new, _HANGUL)
+        ol, nl = _count(old.get("text"), _LATIN), _count(new, _LATIN)
+        if nk < ok_ - 1 or nl > ol + 2:
+            continue
+        old["text_1st"], old["conf_1st"] = old.get("text"), old.get("conf")
+        old["text"], old["conf"], old["second"] = new, round(nc, 1), True
+        improved += 1
+    if improved:
+        txt, pos = res.get("text") or "", 0
+        for l in lines:
+            if l.get("second") and l.get("text_1st"):
+                k = txt.find(l["text_1st"], pos)
+                if k >= 0:
+                    txt = txt[:k] + l["text"] + txt[k + len(l["text_1st"]):]
+                    pos = k + len(l["text"])
+        res["text"] = txt
+        cs = [(l.get("conf"), len(_norm(l.get("text")))) for l in lines if l.get("conf") is not None]
+        tot = sum(n for _, n in cs)
+        if tot:
+            res["mean_conf"] = round(sum(c * n for c, n in cs) / tot, 1)
+    res["second"] = {"tried": len(cand), "improved": improved}
+    return res
 
 
 def _trim_edge_fragments(gray, crop) -> None:
