@@ -118,10 +118,47 @@
     }
     return out;
   }
+  const pick = (x, y) => (x.text && x.conf + 0.1 >= y.conf) || !y.text ? x : y; // 손글씨 모델은 뚜렷이(0.1 이상) 더 확신할 때만
+  /* 글줄 이미지를 낱말 사이 빈칸에서 나눈 가로 구간들 */
+  function wordSpans(c) {
+    const w = c.width, h = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data, g = new Uint8Array(w * h), hist = new Int32Array(256);
+    for (let i = 0; i < w * h; i++) { const v = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000 | 0; g[i] = v; hist[v]++; }
+    let sumAll = 0; for (let i = 0; i < 256; i++) sumAll += i * hist[i];
+    let wB = 0, sB = 0, mxv = -1, thr = 127; const tot = w * h;
+    for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = tot - wB; if (!wF) break; sB += t * hist[t]; const mB = sB / wB, mF = (sumAll - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF); if (v > mxv) { mxv = v; thr = t; } }
+    const col = new Int32Array(w); let r0 = -1, r1 = -1;
+    for (let y = 0; y < h; y++) { let n = 0; for (let x = 0; x < w; x++) if (g[y * w + x] <= thr) n++; if (!n || n > w * 0.6) continue; for (let x = 0; x < w; x++) if (g[y * w + x] <= thr) col[x]++; if (r0 < 0) r0 = y; r1 = y; }
+    const th = r0 < 0 ? h : r1 - r0 + 1, ink = x => col[x] > Math.max(1, th * 0.06);
+    let first = 0, last = w; while (first < w && !ink(first)) first++; while (last > 0 && !ink(last - 1)) last--;
+    if (first >= last) return [[0, w]];
+    const gaps = []; let st = -1;
+    for (let x = first; x < last; x++) { if (!ink(x) && st < 0) st = x; else if (ink(x) && st >= 0) { gaps.push([st, x]); st = -1; } }
+    if (!gaps.length) return [[0, w]];
+    const ws = gaps.map(([a, b]) => b - a).sort((a, b) => a - b); let lim = th * 0.35;
+    if (ws.length >= 3) { let best = 1, cut = null; for (let k = Math.max(1, Math.floor(ws.length / 3)); k < ws.length; k++) if (ws[k] >= th * 0.2 && ws[k - 1] > 0 && ws[k] / ws[k - 1] > best) { best = ws[k] / ws[k - 1]; cut = (ws[k] + ws[k - 1]) / 2; } if (cut != null && best >= 1.45) lim = Math.max(th * 0.2, cut); }
+    const cuts = gaps.filter(([a, b]) => b - a >= lim).map(([a, b]) => (a + b) >> 1); if (!cuts.length) return [[0, w]];
+    const pad = Math.max(2, th * 0.1 | 0), e = [first, ...cuts, last], out = [];
+    for (let i = 0; i < e.length - 1; i++) if (e[i + 1] - e[i] > 2) out.push([Math.max(0, e[i] - pad), Math.min(w, e[i + 1] + pad)]);
+    return out;
+  }
+  function slice(c, a, b) { const t = mk(b - a, c.height); t.getContext('2d').drawImage(c, a, 0, b - a, c.height, 0, 0, b - a, c.height); return t; }
+  /* 줄마다 인쇄체·손글씨 두 모델로 읽어 나은 쪽을 고르고, 확신이 낮은 긴 줄은 낱말 단위로도 읽어 더 나으면 바꾼다 */
   async function recBest(crops) {
-    const b = await rec(S.hw, crops), a = await rec(S.rec, crops);
-    // 손글씨 모델은 인쇄체에서도 확신이 높게 나오는 편이라, 뚜렷이(0.1 이상) 더 확신하는 줄만 손글씨 결과로 바꾼다
-    return a.map((x, i) => (x.text && x.conf + 0.1 >= b[i].conf) || !b[i].text ? x : b[i]);
+    const b = await rec(S.hw, crops), a = await rec(S.rec, crops), line = a.map((x, i) => pick(x, b[i]));
+    const pieces = [], owner = [];
+    crops.forEach((c, i) => {
+      if (c.width <= c.height * 7 || line[i].conf >= 0.85) return;
+      const sp = wordSpans(c); if (sp.length < 2) return;
+      sp.forEach(([x0, x1]) => { pieces.push(slice(c, x0, x1)); owner.push(i); });
+    });
+    if (!pieces.length) return line;
+    const pa = await rec(S.rec, pieces), pb = await rec(S.hw, pieces), words = {};
+    owner.forEach((i, k) => { const r = pick(pa[k], pb[k]); if (r.text) (words[i] = words[i] || []).push(r); });
+    return line.map((l, i) => {
+      const ws = words[i]; if (!ws) return l;
+      const n = ws.reduce((s, r) => s + r.text.length, 0), cf = n ? ws.reduce((s, r) => s + r.conf * r.text.length, 0) / n : 0;
+      return cf > l.conf + 0.02 ? { text: ws.map(r => r.text).join(' '), conf: cf } : l;
+    });
   }
   /* 모델이 띄어쓰기를 자주 빠뜨려서, 글줄 이미지의 실제 빈칸을 보고 공백을 되살린다 */
   function respace(c, chars, xs) {

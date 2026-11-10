@@ -213,18 +213,87 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float]) -> list[str]:
 MODE = os.environ.get("IUX_REC_MODE", "best")  # best: 두 모델 중 더 확신하는 쪽 / hw / rec
 
 
+def _word_spans(crop: np.ndarray) -> list[tuple[int, int]]:
+    """글줄 이미지를 낱말 사이 빈칸에서 나눈 가로 구간들. 빈칸을 못 찾으면 통째로 하나."""
+    g = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    h, w = g.shape[:2]
+    _, ink = cv2.threshold(g, 0, 1, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    ink[ink.sum(1) > w * 0.6] = 0
+    rows = np.where(ink.sum(1) > 0)[0]
+    th = (rows[-1] - rows[0] + 1) if len(rows) else h
+    col = ink.sum(0) > max(1, th * 0.06)
+    if not col.any():
+        return [(0, w)]
+    first, last = int(np.argmax(col)), int(w - np.argmax(col[::-1]))
+    gaps, st = [], None
+    for x_ in range(first, last):
+        if not col[x_] and st is None:
+            st = x_
+        elif col[x_] and st is not None:
+            gaps.append((st, x_))
+            st = None
+    if not gaps:
+        return [(0, w)]
+    ws = sorted(b - a for a, b in gaps)
+    lim = th * 0.35
+    if len(ws) >= 3:  # 글자 사이 틈과 낱말 사이 틈이 갈리는 지점
+        best, cut = 1.0, None
+        for k in range(max(1, len(ws) // 3), len(ws)):
+            if ws[k] >= th * 0.2 and ws[k - 1] > 0 and ws[k] / ws[k - 1] > best:
+                best, cut = ws[k] / ws[k - 1], (ws[k] + ws[k - 1]) / 2
+        if cut is not None and best >= 1.45:
+            lim = max(th * 0.2, cut)
+    cuts = [(a + b) // 2 for a, b in gaps if b - a >= lim]
+    if not cuts:
+        return [(0, w)]
+    pad = max(2, int(th * 0.1))
+    edges = [first] + cuts + [last]
+    return [(max(0, edges[i] - pad), min(w, edges[i + 1] + pad)) for i in range(len(edges) - 1) if edges[i + 1] - edges[i] > 2]
+
+
+def _pick(x: tuple[str, float], y: tuple[str, float], mar: float = 0.1) -> tuple[str, float]:
+    """인쇄체 결과 x와 손글씨 결과 y 중 하나. 손글씨 모델은 인쇄체에서도 확신이 높게 나오는 편이라
+    뚜렷이(mar 이상) 더 확신할 때만 손글씨 결과를 쓴다."""
+    return x if (x[0] and x[1] + mar >= y[1]) or not y[0] else y
+
+
 def _rec_best(crops: list[np.ndarray]) -> list[tuple[str, float]]:
-    """인쇄체 모델과 손글씨 모델로 각각 읽고, 줄마다 더 확신하는 결과를 고른다."""
+    """줄마다 인쇄체·손글씨 두 모델로 읽어 더 확신하는 결과를 고른다.
+    긴 줄은 낱말 단위로도 잘라 읽고(모델이 짧은 낱말 이미지로 학습돼 긴 줄에서 무너지는 경우가 있음),
+    낱말마다 두 모델 중 나은 쪽을 골라 이어 붙인 결과가 더 확신이 높으면 그쪽을 쓴다."""
     if "hw" not in _sess or MODE == "rec":
         return _rec(crops)
-    b = _rec(crops, which="hw")
     if MODE == "hw":
-        return b
-    a = _rec(crops)
-    # 손글씨 모델은 인쇄체에서도 확신이 높게 나오는 편이라, 인쇄체 모델이 충분히 확신하면 그쪽을 쓰고
-    # 손글씨 모델이 뚜렷이(0.1 이상) 더 확신하는 줄만 손글씨 모델 결과로 바꾼다
-    tau, mar = float(os.environ.get("IUX_TAU", "2")), float(os.environ.get("IUX_MAR", "0.1"))
-    return [x if (x[0] and (x[1] >= tau or x[1] + mar >= y[1])) or not y[0] else y for x, y in zip(a, b)]
+        return _rec(crops, which="hw")
+    mar = float(os.environ.get("IUX_MAR", "0.1"))
+    line = [_pick(x, y, mar) for x, y in zip(_rec(crops), _rec(crops, which="hw"))]
+    if os.environ.get("IUX_WORDS", "1") != "1":
+        return line
+    pieces, owner = [], []
+    for i, c in enumerate(crops):
+        if c.shape[1] <= c.shape[0] * 7 or line[i][1] >= float(os.environ.get("IUX_WLOW", "0.85")):
+            continue  # 짧은 줄이나 이미 확신이 높은 줄은 그대로
+        spans = _word_spans(c)
+        if len(spans) < 2:
+            continue
+        for a, b in spans:
+            pieces.append(c[:, a:b])
+            owner.append(i)
+    if not pieces:
+        return line
+    wa, wb = _rec(pieces), _rec(pieces, which="hw")
+    words: dict[int, list] = {}
+    for i, x, y in zip(owner, wa, wb):
+        t, cf = _pick(x, y, mar)
+        if t:
+            words.setdefault(i, []).append((t, cf))
+    out = list(line)
+    for i, ws in words.items():
+        n = sum(len(t) for t, _ in ws)
+        cf = sum(c * len(t) for t, c in ws) / n if n else 0.0
+        if cf > line[i][1] + 0.02:
+            out[i] = (" ".join(t for t, _ in ws), cf)
+    return out
 
 
 import re as _re
