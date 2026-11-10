@@ -15,7 +15,8 @@ import cv2
 import numpy as np
 
 DET_NAME = "iux_det.onnx"
-REC_NAME = "iux_rec_ko.onnx"
+REC_NAME = "iux_rec_ko.onnx"   # 인쇄체 위주 (PP-OCRv5 한국어)
+HW_NAME = "iux_rec_hw.onnx"    # 손글씨 추가 학습 모델 (korean-handwriting-rec, AI Hub 손글씨 386만 단어)
 DICT_NAME = "iux_rec_ko_dict.txt"
 
 _lock = threading.Lock()
@@ -65,6 +66,8 @@ def _load():
         # 한글 경로에서도 열리도록 파일 내용을 읽어서 넘긴다
         _sess["det"] = ort.InferenceSession((d / DET_NAME).read_bytes(), so, providers=["CPUExecutionProvider"])
         _sess["rec"] = ort.InferenceSession((d / REC_NAME).read_bytes(), so, providers=["CPUExecutionProvider"])
+        if (d / HW_NAME).exists():
+            _sess["hw"] = ort.InferenceSession((d / HW_NAME).read_bytes(), so, providers=["CPUExecutionProvider"])
         chars = (d / DICT_NAME).read_text(encoding="utf-8").split("\n")
         if chars and chars[-1] == "":
             chars.pop()
@@ -129,10 +132,10 @@ def _crop(bgr: np.ndarray, pts: np.ndarray) -> np.ndarray:
 
 
 # ---------------- 글자 읽기 (CTC) ----------------
-def _rec(crops: list[np.ndarray], batch: int = 8) -> list[tuple[str, float]]:
+def _rec(crops: list[np.ndarray], batch: int = 8, which: str = "rec") -> list[tuple[str, float]]:
     out: list[tuple[str, float]] = [("", 0.0)] * len(crops)
     order = sorted(range(len(crops)), key=lambda i: crops[i].shape[1] / max(1, crops[i].shape[0]))
-    s_ = _sess["rec"]
+    s_ = _sess[which]
     name = s_.get_inputs()[0].name
     H = 48
     for b in range(0, len(order), batch):
@@ -172,7 +175,7 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float]) -> list[str]:
     _, ink = cv2.threshold(g, 0, 1, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     rows = np.where(ink.sum(1) > 0)[0]
     th = (rows[-1] - rows[0] + 1) if len(rows) else h  # 실제 글자 높이
-    col = ink.sum(0) > 0
+    col = ink.sum(0) > max(1, th * 0.06)  # 모눈·얼룩 같은 옅은 잡티는 빈칸으로 봄
     gaps, st = [], None
     for x_ in range(w):
         if not col[x_] and st is None:
@@ -181,7 +184,7 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float]) -> list[str]:
             gaps.append((st, x_))
             st = None
     first, last = (np.argmax(col), w - np.argmax(col[::-1])) if col.any() else (0, w)
-    gaps = [(a, b) for a, b in gaps if a > first and b < last and (b - a) >= th * 0.32]
+    gaps = [(a, b) for a, b in gaps if a > first and b < last and (b - a) >= th * 0.28]
     if not gaps:
         return chars
     out = [chars[0]]
@@ -194,8 +197,40 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float]) -> list[str]:
     return out
 
 
+MODE = os.environ.get("IUX_REC_MODE", "best")  # best: 두 모델 중 더 확신하는 쪽 / hw / rec
+
+
+def _rec_best(crops: list[np.ndarray]) -> list[tuple[str, float]]:
+    """인쇄체 모델과 손글씨 모델로 각각 읽고, 줄마다 더 확신하는 결과를 고른다."""
+    if "hw" not in _sess or MODE == "rec":
+        return _rec(crops)
+    b = _rec(crops, which="hw")
+    if MODE == "hw":
+        return b
+    a = _rec(crops)
+    return [x if (x[0] and x[1] >= y[1]) or not y[0] else y for x, y in zip(a, b)]
+
+
+import re as _re
+
+_MEAN = _re.compile(r"[가-힣A-Za-z0-9]")
+_HAN = _re.compile(r"[가-힣]")
+
+
+def _rect(pts: np.ndarray):
+    """글줄 상자의 중심·긴 변·짧은 변·기울기(도, 긴 변 기준 -90~90)."""
+    p = _order_pts(pts)
+    wv, hv = p[1] - p[0], p[3] - p[0]
+    wl, hl = float(np.linalg.norm(wv)), float(np.linalg.norm(hv))
+    c = p.mean(0)
+    if hl > wl * 1.5:  # 세로로 선 상자
+        return c, hl, wl, None
+    return c, wl, hl, float(np.degrees(np.arctan2(wv[1], wv[0])))
+
+
 def read_lines(bgr: np.ndarray) -> list[dict]:
-    """글줄 상자를 주면 그대로 읽는 대신, 이미지 전체에서 글줄을 찾아 읽는다."""
+    """이미지 전체에서 글줄을 찾아 읽고, 읽는 순서대로 정리해 돌려준다.
+    비스듬히 찍은 사진(기울어진 글줄)과 세로쓰기(오른쪽 줄부터)도 순서를 맞춘다."""
     _load()
     if bgr.ndim == 2:
         bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
@@ -207,14 +242,58 @@ def read_lines(bgr: np.ndarray) -> list[dict]:
         if c.size and c.shape[0] >= 6 and c.shape[1] >= 6:
             crops.append(c)
             keep.append(pts)
-    res = _rec(crops) if crops else []
-    lines = []
+    res = _rec_best(crops) if crops else []
+    items = []
     for pts, (t, cf) in zip(keep, res):
-        if not t:
-            continue
-        x1, y1, x2, y2 = pts[:, 0].min(), pts[:, 1].min(), pts[:, 0].max(), pts[:, 1].max()
-        lines.append({"text": t, "conf": round(cf * 100, 1),
-                      "box": [round(float(x1 / w), 5), round(float(y1 / h), 5), round(float((x2 - x1) / w), 5), round(float((y2 - y1) / h), 5)]})
+        if not t or not _MEAN.search(t):
+            continue  # 도장·얼룩·기호만 읽힌 것
+        core = _re.sub(r"\s+", "", t)
+        if (len(core) <= 2 and cf < 0.6) or (not _HAN.search(core) and cf < 0.55):
+            continue  # 짧거나 한글 없는 저신뢰 조각
+        c, L, S, ang = _rect(pts)
+        items.append({"pts": pts, "text": t, "conf": cf, "c": c, "L": L, "S": S, "ang": ang})
+    if not items:
+        return []
+
+    def out(group: list[dict], block: int) -> dict:
+        P = np.concatenate([g["pts"] for g in group])
+        x1, y1, x2, y2 = P[:, 0].min(), P[:, 1].min(), P[:, 0].max(), P[:, 1].max()
+        return {"text": "  ".join(g["text"] for g in group), "conf": round(min(g["conf"] for g in group) * 100, 1), "block": block,
+                "box": [round(float(x1 / w), 5), round(float(y1 / h), 5), round(float((x2 - x1) / w), 5), round(float((y2 - y1) / h), 5)]}
+
+    vert = [it for it in items if it["ang"] is None]
+    if len(vert) >= max(2, len(items) * 0.6):  # 세로쓰기: 오른쪽 줄부터, 줄마다 한 줄
+        items.sort(key=lambda it: -it["c"][0])
+        return [out([it], 0) for it in items]
+
+    angs = [it["ang"] for it in items if it["ang"] is not None and it["L"] > it["S"] * 2]
+    A = float(np.median(angs)) if angs else 0.0
+    if abs(A) < 1.5:
+        A = 0.0
+    ca, sa = np.cos(np.radians(-A)), np.sin(np.radians(-A))
+    for it in items:  # 글줄 방향에 맞춰 돌린 좌표에서 줄을 묶는다
+        it["u"] = it["c"][0] * ca - it["c"][1] * sa
+        it["v"] = it["c"][0] * sa + it["c"][1] * ca
+    items.sort(key=lambda it: it["v"])
+    rows: list[list[dict]] = []
+    for it in items:
+        if rows:
+            last = rows[-1]
+            lv = sum(x["v"] for x in last) / len(last)
+            lh = sum(x["S"] for x in last) / len(last)
+            if abs(it["v"] - lv) < min(lh, it["S"]) * 0.55:
+                last.append(it)
+                continue
+        rows.append([it])
+    lines, block, prev = [], 0, None
+    for row in rows:
+        row.sort(key=lambda it: it["u"])
+        v = sum(x["v"] for x in row) / len(row)
+        hh = sum(x["S"] for x in row) / len(row)
+        if prev is not None and v - prev[0] > (prev[1] + hh) * 1.25:
+            block += 1
+        prev = (v, hh)
+        lines.append(out(row, block))
     return lines
 
 
@@ -223,5 +302,5 @@ def read_crop(bgr: np.ndarray) -> tuple[str, float]:
     _load()
     if bgr.ndim == 2:
         bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
-    t, c = _rec([bgr])[0]
+    t, c = _rec_best([bgr])[0]
     return t, c * 100
