@@ -796,7 +796,7 @@ async function loadEngines(){
   const t=E.tesseract,p=E.iux||{available:false},o=E.ollama;
   $('#pills').innerHTML=
     pill(t.available,t.available&&!t.has_kor,'Tesseract',t.available?(t.has_kor?'v'+t.version.split(' ')[0]:'한국어 데이터 없음'):'미설치')+
-    pill(p.available,false,'IUX 엔진',p.available?'손글씨·오프라인':'PC 버전 전용')+
+    pill(p.available,false,'IUX 엔진',p.available?'손글씨':'사용 불가')+
     pill(o.available,false,'Ollama',o.available?`모델 ${o.models.length}개`:'꺼짐');
   $$('[data-help]').forEach(b=>b.onclick=openHelp);
   // 엔진 버튼

@@ -217,7 +217,8 @@ def ocr_page(doc: dict, idx: int, engine: str, lang: str, psm: int, model: str |
         rotate_page(doc, idx, info["rotate"])
         color = preprocess.load_bgr(str(d / p["file"]))
         info["rotate_fixed"] = info.pop("rotate")
-    preprocess.save_png(str(d / p["proc"]), gray)
+    # IUX 엔진은 원본을 그대로 읽으므로, 화면 박스가 어긋나지 않게 전처리 보기에도 원본(흑백)을 둔다
+    preprocess.save_png(str(d / p["proc"]), cv2.cvtColor(color, cv2.COLOR_BGR2GRAY) if engine == "iux" and color.ndim == 3 else gray)
     res = engines.run_engine(engine, gray, color, lang, psm, model, fix_spacing)
     if (pre or {}).get("second", True):
         res = second_pass(res, gray, engine, lang, model)

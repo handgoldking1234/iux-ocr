@@ -12,7 +12,7 @@
 | 동작 | 로컬 우선. 서버는 `127.0.0.1`에서만 열림, 문서가 PC 밖으로 안 나감 |
 | 핵심 흐름 | 본문 + 사용자가 정한 항목을 추출 → 항목별 확인 → 개별/전체 복사로 업무 시스템에 옮김 (helper.js로 업무 화면 자동 입력) |
 | 설치형 | Windows exe. `main` 푸시 → GitHub Actions가 빌드해 Releases에 올림 |
-| 웹 | Tesseract.js(브라우저). 정확·AI 모드·폴더 일괄·검색 PDF는 설치형 전용 |
+| 웹 | Tesseract.js + IUX 엔진(브라우저, 손글씨). AI 모드·검색 PDF는 설치형 전용 |
 
 ## 파일
 ```
@@ -26,6 +26,7 @@ app/static/helper.js    업무 화면 자동 입력 도우미
 index.html          웹버전 (tools/build_web.py가 app/static/index.html로 생성 — 직접 고치지 말 것)
 web/shim.js         웹버전에서 서버 API를 브라우저로 대신 (IndexedDB, Tesseract.js, pdf.js)
 web/rules.js        웹버전 항목 추출 규칙
+web/iux.js          웹버전 IUX 엔진 (ONNX Runtime Web — models/ 의 모델을 브라우저에서 실행, app/iux_engine.py와 같은 로직)
 web/vendor/         Tesseract·pdf.js·SheetJS·언어 데이터 (수정 금지)
 install/            설치 프로그램(Inno Setup), 오프라인 번들
 .github/workflows/build-windows.yml   exe 자동 빌드

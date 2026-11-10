@@ -215,6 +215,14 @@
     return { canvas: grayCanvas(g, c.width, c.height), info };
   }
 
+  /* ---------------- IUX 엔진 (web/iux.js) ---------------- */
+  let iuxNote = 0;
+  async function iuxRead(canvasEl) {
+    if (!window.IUX) await loadScript('web/iux.js');
+    const first = !IUX.loaded();
+    if (first && window.toast) toast('손글씨 엔진을 준비하는 중입니다 (처음 한 번, 약 45MB)');
+    return IUX.readLines(canvasEl, f => { const pct = Math.floor(f * 10); if (first && pct > iuxNote && pct < 10 && window.setBusy) { iuxNote = pct; } });
+  }
   /* ---------------- Tesseract.js ---------------- */
   const workers = {};
   async function worker(lang) {
@@ -304,6 +312,16 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     const t0 = performance.now(), p = doc.pages[idx];
     if (p.pending) throw new Error('아직 불러오지 않은 파일입니다.');
     let src = await blobToCanvas(await getBlob(`${doc.id}/image/${pk(p)}`));
+    if (req.engine === 'iux') { // IUX 엔진: 손글씨·흐린 글씨용 딥러닝 (브라우저 안에서 실행)
+      const info0 = { engine_input: 'original' };
+      await setBlob(doc.id, 'proc', pk(p), await toBlob(src, 'image/jpeg', 0.9)); // 원본 그대로 읽으므로 화면 박스가 어긋나지 않게 원본을 저장
+      const lines = await iuxRead(src);
+      const cs = lines.map(l => l.conf);
+      p.result = { engine: 'iux', lines, text: R.linesToText(lines), mean_conf: cs.length ? Math.round(cs.reduce((a, b) => a + b, 0) / cs.length * 10) / 10 : null,
+        time_ms: Math.round(performance.now() - t0), pre: info0, lang: req.lang || 'kor+eng', at: Date.now() / 1000 };
+      delete p.pdf_text;
+      return p;
+    }
     let rotated = 0;
     if ((req.pre || {}).orient !== false) {
       const deg = await detectRotation(src);
@@ -468,7 +486,7 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     let m;
     if (p === '/api/engines') return {
       tesseract: { available: true, version: '5 (브라우저)', has_kor: true, path: '이 브라우저 (Tesseract.js, 오프라인 모델 포함)' },
-      iux: { available: false, reason: '정확(IUX 엔진)은 PC 설치 버전에서 사용할 수 있습니다.' },
+      iux: { available: true, web: true },
       paddle: { available: false, reason: '정확 모드는 PC 설치 버전에서 사용할 수 있습니다.' },
       ollama: { available: false, reason: 'AI 모드는 PC 설치 버전에서 사용할 수 있습니다.', models: [], vision: [] },
       web: true,
@@ -540,6 +558,10 @@ function trimEdgeFragments(x, ox, oy, w, h) {
       const c = canvas(cw + M * 2, ch + M * 2), x = c.getContext('2d');
       x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.imageSmoothingQuality = 'high';
       x.drawImage(src, X0, Y0, X1 - X0, Y1 - Y0, M, M, cw, ch);
+      if (body.engine === 'iux') {
+        const ls = await iuxRead(c);
+        return { text: ls.map(l => l.text).join('\n'), mean_conf: ls.length ? Math.min(...ls.map(l => l.conf)) : null };
+      }
       trimEdgeFragments(x, M, M, cw, ch);
       const lang = ['kor+eng', 'kor', 'eng'].includes(body.lang) ? body.lang : 'kor+eng';
       const w = await worker(lang);
