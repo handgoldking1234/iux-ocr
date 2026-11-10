@@ -184,7 +184,14 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float]) -> list[str]:
             gaps.append((st, x_))
             st = None
     first, last = (np.argmax(col), w - np.argmax(col[::-1])) if col.any() else (0, w)
-    gaps = [(a, b) for a, b in gaps if a > first and b < last and (b - a) >= th * 0.28]
+    inner = [(a, b) for a, b in gaps if a > first and b < last]
+    lim = th * 0.28
+    # 글자가 하나하나 떨어진 글씨(인쇄체·자간 넓은 글씨)는 글자 사이 틈이 모두 넓으므로, 보통 틈보다 확실히 넓은 것만 띄어쓰기로 본다
+    n_ch = sum(1 for c in chars if c != " ")
+    if len(inner) >= max(3, n_ch * 0.5):
+        widths = sorted(b - a for a, b in inner)
+        lim = max(lim, widths[len(widths) // 2] * 1.7)
+    gaps = [(a, b) for a, b in inner if (b - a) >= lim]
     if not gaps:
         return chars
     out = [chars[0]]
@@ -208,7 +215,10 @@ def _rec_best(crops: list[np.ndarray]) -> list[tuple[str, float]]:
     if MODE == "hw":
         return b
     a = _rec(crops)
-    return [x if (x[0] and x[1] >= y[1]) or not y[0] else y for x, y in zip(a, b)]
+    # 손글씨 모델은 인쇄체에서도 확신이 높게 나오는 편이라, 인쇄체 모델이 충분히 확신하면 그쪽을 쓰고
+    # 손글씨 모델이 뚜렷이(0.1 이상) 더 확신하는 줄만 손글씨 모델 결과로 바꾼다
+    tau, mar = float(os.environ.get("IUX_TAU", "2")), float(os.environ.get("IUX_MAR", "0.1"))
+    return [x if (x[0] and (x[1] >= tau or x[1] + mar >= y[1])) or not y[0] else y for x, y in zip(a, b)]
 
 
 import re as _re

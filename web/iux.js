@@ -120,7 +120,8 @@
   }
   async function recBest(crops) {
     const b = await rec(S.hw, crops), a = await rec(S.rec, crops);
-    return a.map((x, i) => (x.text && x.conf >= b[i].conf) || !b[i].text ? x : b[i]);
+    // 손글씨 모델은 인쇄체에서도 확신이 높게 나오는 편이라, 뚜렷이(0.1 이상) 더 확신하는 줄만 손글씨 결과로 바꾼다
+    return a.map((x, i) => (x.text && x.conf + 0.1 >= b[i].conf) || !b[i].text ? x : b[i]);
   }
   /* 모델이 띄어쓰기를 자주 빠뜨려서, 글줄 이미지의 실제 빈칸을 보고 공백을 되살린다 */
   function respace(c, chars, xs) {
@@ -134,8 +135,11 @@
     for (let y = 0; y < h; y++) { let any = false; for (let x = 0; x < w; x++) if (g[y * w + x] <= thr) { col[x]++; any = true; } if (any) { if (r0 < 0) r0 = y; r1 = y; } }
     const th = r0 < 0 ? h : r1 - r0 + 1, lim = Math.max(1, th * 0.06), ink = x => col[x] > lim;
     let first = 0, last = w; while (first < w && !ink(first)) first++; while (last > 0 && !ink(last - 1)) last--;
-    const gaps = []; let st = -1;
-    for (let x = 0; x < w; x++) { if (!ink(x) && st < 0) st = x; else if (ink(x) && st >= 0) { if (st > first && x < last && x - st >= th * 0.28) gaps.push((st + x) / 2); st = -1; } }
+    const inner = []; let st = -1;
+    for (let x = 0; x < w; x++) { if (!ink(x) && st < 0) st = x; else if (ink(x) && st >= 0) { if (st > first && x < last) inner.push([st, x]); st = -1; } }
+    let gl = th * 0.28; const nCh = chars.filter(c => c !== ' ').length;
+    if (inner.length >= Math.max(3, nCh * 0.5)) { const ws = inner.map(([a, b]) => b - a).sort((a, b) => a - b); gl = Math.max(gl, ws[ws.length >> 1] * 1.7); } // 글자가 하나하나 떨어진 글씨는 보통 틈보다 확실히 넓은 것만 띄어쓰기로
+    const gaps = inner.filter(([a, b]) => b - a >= gl).map(([a, b]) => (a + b) / 2);
     if (!gaps.length) return chars;
     const out = [chars[0]];
     for (let j = 1; j < chars.length; j++) {
