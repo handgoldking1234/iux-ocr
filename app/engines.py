@@ -442,7 +442,7 @@ def run_engine(engine: str, gray: np.ndarray, color: np.ndarray, lang: str, psm:
     if engine == "tesseract":
         res = run_tesseract(gray, lang=lang, psm=psm, fix_spacing=fix_spacing)
     elif engine == "iux":
-        res = run_iux(gray, color)
+        res = run_iux(gray, color, lang)
     elif engine == "paddle":
         res = run_paddle(gray)
     elif engine == "ollama":
@@ -455,12 +455,13 @@ def run_engine(engine: str, gray: np.ndarray, color: np.ndarray, lang: str, psm:
     return res
 
 
-def run_iux(gray: np.ndarray, color: np.ndarray | None = None) -> dict:
+def run_iux(gray: np.ndarray, color: np.ndarray | None = None, lang: str = "kor+eng") -> dict:
     """IUX 엔진: 내장 딥러닝 모델(ONNX, CPU)로 글줄을 찾아 읽는다. 손글씨·흐린 글씨에 강함.
     원본 색상 이미지를 그대로 읽는 쪽이 정확해서(모눈·줄 공책 등) 원본을 우선 쓴다."""
     from . import iux_engine
     img = color if color is not None and color.size else gray
-    return _finish("iux", iux_engine.read_lines(img))
+    # 색 도장 지우기·흐린 글씨 진하게는 늘 켬, 한자는 언어에 한자(chi_tra)를 고른 경우에만
+    return _finish("iux", iux_engine.read_lines(img, {"hanja": "chi_tra" in (lang or "")}))
 
 
 def iux_info() -> dict:

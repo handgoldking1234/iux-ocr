@@ -178,6 +178,8 @@ select:focus,input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .ln .cf.low{background:var(--warn-bg);color:var(--warn)}
 .ln .cf.none{background:var(--panel-2);color:var(--text-3)}
 .ln .cf.sec{box-shadow:inset 0 0 0 1.5px var(--accent)}
+mark.nck{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px;box-shadow:0 0 0 1px #f2c200 inset}
+.stat.chk{background:#fff4c4;color:#8a6500}
 .stat.ok{background:var(--ok-bg,#e8f7ee);color:var(--ok,#1a8f4c)}
 .ln .cp{flex:none;width:24px;height:22px;display:grid;place-items:center;border:0;background:transparent;border-radius:5px;color:var(--text-3);cursor:pointer;opacity:.35;margin-top:-1px}
 .ln .cp svg{width:14px;height:14px}
@@ -944,6 +946,7 @@ function renderStats(){
   $('#stats').innerHTML=`<span class="stat">엔진 <b>${esc(eng)}</b></span>`+
    (r.mean_conf!=null?`<span class="stat">평균 신뢰도 <b>${r.mean_conf}</b></span>`:'')+
    (low?`<span class="stat warn">확인 필요 <b>${low}줄</b></span>`:'')+
+   ((()=>{const n=(r.lines||[]).reduce((a,l)=>a+(l.check?.length||0),0);return n?`<span class="stat chk" title="확신이 낮은 숫자는 노란색으로 표시했습니다. 금액·날짜·번호는 원본과 꼭 확인하세요">확인할 숫자 <b>${n}</b></span>`:''})())+
    (r.second?.improved?`<span class="stat ok" title="신뢰도 낮던 ${r.second.tried}줄을 다시 읽어 ${r.second.improved}줄을 고쳤습니다">2차 인식 <b>${r.second.improved}줄</b> 개선</span>`:'')+
    (r.time_ms?`<span class="stat">${(r.time_ms/1000).toFixed(1)}초</span>`:'')+
    `<span class="sp"></span><div class="seg" id="modeSeg"><button data-m="lines" class="${S.editMode==='lines'?'on':''}">줄별</button><button data-m="full" class="${S.editMode==='full'?'on':''}">전체</button></div>`+
@@ -972,7 +975,7 @@ function renderText(){
   r.lines.forEach((l,i)=>{
     if(prev!==null&&l.block!==prev)h+='<div class="gap"></div>';prev=l.block;
     const lowc=l.conf!=null&&l.conf<LOW;
-    h+=`<div class="ln ${lowc?'low':''} ${i===S.sel?'sel':''}" data-i="${i}"><span class="n">${i+1}</span><div class="tx" contenteditable="plaintext-only" spellcheck="false">${esc(l.text)}</div><span class="cf ${l.conf==null?'none':lowc?'low':''} ${l.second?'sec':''}" ${l.second?`title="2차 인식으로 고친 줄 (처음 인식: ${esc(l.text_1st||'')} · 신뢰도 ${Math.round(l.conf_1st||0)})"`:''}>${l.conf==null?'-':Math.round(l.conf)}</span><button class="cp" title="이 줄 복사">${ic('copy')}</button></div>`;
+    h+=`<div class="ln ${lowc?'low':''} ${i===S.sel?'sel':''}" data-i="${i}"><span class="n">${i+1}</span><div class="tx" contenteditable="plaintext-only" spellcheck="false">${markChecks(l)}</div><span class="cf ${l.conf==null?'none':lowc?'low':''} ${l.second?'sec':''}" ${l.second?`title="2차 인식으로 고친 줄 (처음 인식: ${esc(l.text_1st||'')} · 신뢰도 ${Math.round(l.conf_1st||0)})"`:''}>${l.conf==null?'-':Math.round(l.conf)}</span><button class="cp" title="이 줄 복사">${ic('copy')}</button></div>`;
   });
   h+='</div>';body.innerHTML=h;
   $('#toFull')?.addEventListener('click',()=>{S.editMode='full';renderText()});
@@ -988,7 +991,7 @@ function renderText(){
 
 function setLineText(i,t,from){
   const r=curPage()?.result;if(!r)return;const diverged=r.text!==linesToText(r.lines);
-  r.lines[i].text=t;if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage();
+  if(r.lines[i].text!==t)delete r.lines[i].check;r.lines[i].text=t;if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage();
   if(from!=='list'){const tx=$(`.ln[data-i="${i}"] .tx`);if(tx&&document.activeElement!==tx)tx.textContent=t}
   const rc=$(`#overlay rect[data-i="${i}"] title`);if(rc)rc.textContent=`${i+1}. ${t}`;
 }
@@ -1009,6 +1012,14 @@ function openLinePop(i){
   drawSelRect(SEL.box);
   showSelPop(l.text,`${i+1}번째 줄${l.conf!=null?` · 신뢰도 ${Math.round(l.conf)}`:''}${S.autoCopy?' · 복사됨':''}`);
   if(S.autoCopy)copyText(l.text,`${i+1}번째 줄을 복사했습니다`);
+}
+
+/* 확신이 낮은 숫자(금액·날짜·번호)를 노란색으로 — 원본과 대조할 곳 */
+function markChecks(l){
+  const ck=l.check;if(!ck?.length||l.edited_line)return esc(l.text);
+  const set=new Set(ck);let h='';
+  [...l.text].forEach((ch,k)=>{h+=set.has(k)?`<mark class="nck" title="확신이 낮은 숫자 — 원본과 확인하세요">${esc(ch)}</mark>`:esc(ch)});
+  return h;
 }
 
 /* ---------- OCR 실행 ---------- */

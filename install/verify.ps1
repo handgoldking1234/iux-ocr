@@ -59,6 +59,7 @@ Check "IUX 엔진 (내장 딥러닝, 오프라인)" {
   $sw = [Diagnostics.Stopwatch]::StartNew()
   $r = Invoke-RestMethod "$base/api/docs/$($docs.jpg)/ocr" -Method Post -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes('{"page":0,"engine":"iux","lang":"kor+eng","psm":4}'))
   if ($r.result.text -notmatch "서울") { throw "IUX 인식 결과 이상: $($r.result.text.Substring(0, [Math]::Min(40, $r.result.text.Length)))" }
+  if (-not ($e.tesseract.langs -contains "chi_tra")) { throw "한자 데이터(chi_tra) 없음" }
   "신뢰도 $($r.result.mean_conf), $([math]::Round($sw.Elapsed.TotalSeconds,1))초, $($r.result.lines.Count)줄"
 }
 Check "항목 자동 채움 (기록물 메타데이터)" {

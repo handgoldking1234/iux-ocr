@@ -105,15 +105,18 @@
       const o = (await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', f, [N, 3, H, W]) }))[sess.outputNames[0]];
       const [, T, C] = o.dims, data = o.data;
       idx.forEach((i, k) => {
-        const chars = [], xs = []; let sum = 0, prev = 0;
+        const chars = [], xs = [], ps = []; let sum = 0, prev = 0;
         for (let t = 0; t < T; t++) {
           const off = (k * T + t) * C; let best = 0, bv = data[off];
           for (let c = 1; c < C; c++) { const v = data[off + c]; if (v > bv) { bv = v; best = c; } }
-          if (best !== 0 && best !== prev && best < S.chars.length) { chars.push(S.chars[best]); sum += bv; xs.push((t + 0.5) / T * W / ws[k]); }
+          if (best !== 0 && best !== prev && best < S.chars.length) { chars.push(S.chars[best]); ps.push(bv); sum += bv; xs.push((t + 0.5) / T * W / ws[k]); }
           prev = best;
         }
         const conf = chars.length ? sum / chars.length : 0;
-        out[i] = { text: respace(crops[i], chars, xs).join('').trim(), conf };
+        let [rc, rp] = respace(crops[i], chars, xs, ps);
+        while (rc.length && rc[0] === ' ') { rc = rc.slice(1); rp = rp.slice(1); }
+        while (rc.length && rc[rc.length - 1] === ' ') { rc = rc.slice(0, -1); rp = rp.slice(0, -1); }
+        out[i] = { text: rc.join(''), conf, ps: rp };
       });
     }
     return out;
@@ -157,12 +160,14 @@
     return line.map((l, i) => {
       const ws = words[i]; if (!ws) return l;
       const n = ws.reduce((s, r) => s + r.text.length, 0), cf = n ? ws.reduce((s, r) => s + r.conf * r.text.length, 0) / n : 0;
-      return cf > l.conf + 0.02 ? { text: ws.map(r => r.text).join(' '), conf: cf } : l;
+      if (!(cf > l.conf + 0.02)) return l;
+      const ps = []; ws.forEach((r, k) => { if (k) ps.push(1); ps.push(...(r.ps || [])); });
+      return { text: ws.map(r => r.text).join(' '), conf: cf, ps };
     });
   }
   /* 모델이 띄어쓰기를 자주 빠뜨려서, 글줄 이미지의 실제 빈칸을 보고 공백을 되살린다 */
-  function respace(c, chars, xs) {
-    if (chars.length < 2) return chars;
+  function respace(c, chars, xs, ps) {
+    if (chars.length < 2) return [chars, ps];
     const w = c.width, h = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data, g = new Uint8Array(w * h), hist = new Int32Array(256);
     for (let i = 0; i < w * h; i++) { const v = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000 | 0; g[i] = v; hist[v]++; }
     let sumAll = 0; for (let i = 0; i < 256; i++) sumAll += i * hist[i];
@@ -186,27 +191,59 @@
       gl = cut != null && best >= 1.45 ? cut : Math.max(gl, ws[ws.length >> 1] * 1.7);
     }
     const gaps = inner.filter(([a, b]) => b - a >= gl).map(([a, b]) => (a + b) / 2);
-    if (!gaps.length) return chars;
-    const out = [chars[0]];
+    if (!gaps.length) return [chars, ps];
+    const out = [chars[0]], op = [ps[0]];
     for (let j = 1; j < chars.length; j++) {
-      if (chars[j] !== ' ' && out[out.length - 1] !== ' ') { const x0 = xs[j - 1] * w, x1 = xs[j] * w; if (gaps.some(m => x0 < m && m < x1)) out.push(' '); }
-      out.push(chars[j]);
+      if (chars[j] !== ' ' && out[out.length - 1] !== ' ') { const x0 = xs[j - 1] * w, x1 = xs[j] * w; if (gaps.some(m => x0 < m && m < x1)) { out.push(' '); op.push(1); } }
+      out.push(chars[j]); op.push(ps[j]);
     }
-    return out;
+    return [out, op];
   }
 
   /* ---------- 전체: 찾기 → 읽기 → 순서 정리 ---------- */
+  /* 빨강·주황·노랑(직인·무궁화 바탕·형광펜)을 밝기로 바꿔 흰색에 가깝게 — 겹친 검은 글씨는 그대로 남음 */
+  function decolor(src) {
+    const w = src.width, h = src.height, c = mk(w, h), x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(src, 0, 0); const im = x.getImageData(0, 0, w, h), d = im.data; let warm = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b), sat = mx ? (mx - mn) / mx * 255 : 0;
+      let hue = 0; if (mx !== mn) { if (mx === r) hue = ((g - b) / (mx - mn) + 6) % 6; else if (mx === g) hue = (b - r) / (mx - mn) + 2; else hue = (r - g) / (mx - mn) + 4; } hue *= 30; // OpenCV 단위(0~180)
+      let v; if ((hue <= 35 || hue >= 150) && sat >= 60) { v = mx; warm++; } else v = (r * 299 + g * 587 + b * 114) / 1000;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    x.putImageData(im, 0, 0); return [c, warm / (w * h)];
+  }
+  /* 흐린 글씨(옅은 타자기·복사본)면 대비를 늘린 캔버스, 아니면 null */
+  function enhanceFaint(src) {
+    const w = src.width, h = src.height, c = mk(w, h), x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(src, 0, 0); const im = x.getImageData(0, 0, w, h), d = im.data, hist = new Int32Array(256), n = w * h;
+    for (let i = 0; i < d.length; i += 4) hist[(d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0]++;
+    const pct = q => { let a = 0; for (let k = 0; k < 256; k++) { a += hist[k]; if (a >= n * q) return k; } return 255; };
+    const p1 = pct(0.005), p50 = pct(0.5);
+    if (p1 < 110 || p50 - p1 < 25) return null;
+    for (let i = 0; i < d.length; i += 4) {
+      const g = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000, t = Math.min(1, Math.max(0, (g - p1) / Math.max(1, p50 - p1)));
+      d[i] = d[i + 1] = d[i + 2] = 255 * Math.pow(t, 1.6);
+    }
+    x.putImageData(im, 0, 0); return c;
+  }
   async function readLines(src, onProgress) {
     await load(onProgress);
-    const w = src.width, h = src.height, boxes = await detect(src);
-    const crops = [], keep = [];
-    for (const b of boxes) { const c = cropBox(src, b); if (c.width >= 6 && c.height >= 6) { crops.push(c); keep.push(b); } }
-    const res = crops.length ? await recBest(crops) : [], items = [];
+    const w = src.width, h = src.height;
+    let srcs = [src]; const f = enhanceFaint(src); if (f) srcs = [f, src];
+    const [dc, ratio] = decolor(srcs[0]); if (ratio > 0.003) srcs = [dc, ...srcs];
+    const boxes = await detect(srcs[0]);
+    const per = srcs.map(() => []), keep = [];
+    for (const b of boxes) { const cs = srcs.map(s => cropBox(s, b)); if (cs[0].width >= 6 && cs[0].height >= 6) { cs.forEach((c, k) => per[k].push(c)); keep.push(b); } }
+    let res = keep.length ? await recBest(per[0]) : [];
+    for (let k = 1; k < srcs.length && keep.length; k++) { const alt = await recBest(per[k]); res = res.map((a, i) => (alt[i].text && alt[i].conf > a.conf + 0.01) || !a.text ? alt[i] : a); }
+    const items = [];
     res.forEach((r, i) => {
       const t = r.text; if (!t || !/[가-힣A-Za-z0-9]/.test(t)) return;
       const core = t.replace(/\s+/g, '');
       if ((core.length <= 2 && r.conf < 0.6) || (!/[가-힣]/.test(core) && r.conf < 0.55)) return;
-      const b = keep[i]; items.push({ b, text: t, conf: r.conf, ang: b.vertical ? null : Math.atan2(b.uy, b.ux) * 180 / Math.PI });
+      const chk = []; [...t].forEach((ch, k) => { if (/[0-9]/.test(ch) && r.ps && r.ps[k] < 0.9) chk.push(k); });
+      const b = keep[i]; items.push({ b, text: t, conf: r.conf, chk, ang: b.vertical ? null : Math.atan2(b.uy, b.ux) * 180 / Math.PI });
     });
     if (!items.length) return [];
     const corners = b => { const hx = b.ux * b.L / 2, hy = b.uy * b.L / 2, vx = -b.uy * b.S / 2, vy = b.ux * b.S / 2; return [[b.cx - hx - vx, b.cy - hy - vy], [b.cx + hx - vx, b.cy + hy - vy], [b.cx + hx + vx, b.cy + hy + vy], [b.cx - hx + vx, b.cy - hy + vy]]; };
@@ -214,7 +251,10 @@
       let x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9;
       grp.forEach(g => corners(g.b).forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }));
       x1 = Math.max(0, x1); y1 = Math.max(0, y1); x2 = Math.min(w, x2); y2 = Math.min(h, y2);
-      return { text: grp.map(g => g.text).join('  '), conf: Math.round(Math.min(...grp.map(g => g.conf)) * 1000) / 10, block, box: [x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h] };
+      const check = []; let off = 0; grp.forEach(g => { g.chk.forEach(k => check.push(off + k)); off += g.text.length + 2; });
+      const o = { text: grp.map(g => g.text).join('  '), conf: Math.round(Math.min(...grp.map(g => g.conf)) * 1000) / 10, block, box: [x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h] };
+      if (check.length) o.check = check;
+      return o;
     };
     if (items.filter(i => i.ang == null).length >= Math.max(2, items.length * 0.6)) { // 세로쓰기: 오른쪽 줄부터
       items.sort((a, b) => b.b.cx - a.b.cx); return items.map(i => out([i], 0));

@@ -38,11 +38,13 @@ jobs:
           if (-not (Test-Path "$src\tesseract.exe")) { $src = Split-Path (Get-ChildItem "C:\Program*\Tesseract-OCR\tesseract.exe" | Select-Object -First 1).FullName }
           New-Item -ItemType Directory -Force -Path build_extra | Out-Null
           Copy-Item $src build_extra\tesseract -Recurse -Force
-          foreach ($l in @("kor", "eng", "osd")) {
+          foreach ($l in @("kor", "eng", "osd", "chi_tra")) {
             $out = "build_extra\tesseract\tessdata\$l.traineddata"
-            $urls = @("https://github.com/tesseract-ocr/tessdata/raw/main/$l.traineddata",
-                      "https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/$l.traineddata",
-                      "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata@main/$l.traineddata")
+            # 한자(chi_tra)는 용량이 작은 fast 판 (약 2.4MB)
+            $repo = if ($l -eq "chi_tra") { "tessdata_fast" } else { "tessdata" }
+            $urls = @("https://github.com/tesseract-ocr/$repo/raw/main/$l.traineddata",
+                      "https://raw.githubusercontent.com/tesseract-ocr/$repo/main/$l.traineddata",
+                      "https://cdn.jsdelivr.net/gh/tesseract-ocr/$repo@main/$l.traineddata")
             $ok = $false
             for ($try = 1; $try -le 4 -and -not $ok; $try++) {
               foreach ($u in $urls) {
