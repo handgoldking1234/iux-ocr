@@ -132,13 +132,22 @@
     let wB = 0, sB = 0, mxv = -1, thr = 127; const tot = w * h;
     for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = tot - wB; if (!wF) break; sB += t * hist[t]; const mB = sB / wB, mF = (sumAll - sB) / wF, v = wB * wF * (mB - mF) * (mB - mF); if (v > mxv) { mxv = v; thr = t; } }
     const col = new Int32Array(w); let r0 = -1, r1 = -1;
-    for (let y = 0; y < h; y++) { let any = false; for (let x = 0; x < w; x++) if (g[y * w + x] <= thr) { col[x]++; any = true; } if (any) { if (r0 < 0) r0 = y; r1 = y; } }
+    for (let y = 0; y < h; y++) {
+      let n = 0; for (let x = 0; x < w; x++) if (g[y * w + x] <= thr) n++;
+      if (!n || n > w * 0.6) continue; // 공책 줄·밑줄처럼 가로로 길게 이어진 선은 글자가 아님
+      for (let x = 0; x < w; x++) if (g[y * w + x] <= thr) col[x]++;
+      if (r0 < 0) r0 = y; r1 = y;
+    }
     const th = r0 < 0 ? h : r1 - r0 + 1, lim = Math.max(1, th * 0.06), ink = x => col[x] > lim;
     let first = 0, last = w; while (first < w && !ink(first)) first++; while (last > 0 && !ink(last - 1)) last--;
     const inner = []; let st = -1;
     for (let x = 0; x < w; x++) { if (!ink(x) && st < 0) st = x; else if (ink(x) && st >= 0) { if (st > first && x < last) inner.push([st, x]); st = -1; } }
     let gl = th * 0.28; const nCh = chars.filter(c => c !== ' ').length;
-    if (inner.length >= Math.max(3, nCh * 0.5)) { const ws = inner.map(([a, b]) => b - a).sort((a, b) => a - b); gl = Math.max(gl, ws[ws.length >> 1] * 1.7); } // 글자가 하나하나 떨어진 글씨는 보통 틈보다 확실히 넓은 것만 띄어쓰기로
+    if (inner.length >= Math.max(3, nCh * 0.5)) { // 글자가 하나하나 떨어진 글씨: 틈 너비가 '글자 사이'와 '낱말 사이'로 갈리는 지점을 기준으로
+      const ws = inner.map(([a, b]) => b - a).sort((a, b) => a - b); let best = 1, cut = null;
+      for (let k = Math.max(1, Math.floor(ws.length / 3)); k < ws.length; k++) if (ws[k] >= th * 0.18 && ws[k - 1] > 0 && ws[k] / ws[k - 1] > best) { best = ws[k] / ws[k - 1]; cut = (ws[k] + ws[k - 1]) / 2; }
+      gl = cut != null && best >= 1.45 ? cut : Math.max(gl, ws[ws.length >> 1] * 1.7);
+    }
     const gaps = inner.filter(([a, b]) => b - a >= gl).map(([a, b]) => (a + b) / 2);
     if (!gaps.length) return chars;
     const out = [chars[0]];

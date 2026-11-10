@@ -173,6 +173,7 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float]) -> list[str]:
     g = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
     h, w = g.shape[:2]
     _, ink = cv2.threshold(g, 0, 1, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    ink[ink.sum(1) > w * 0.6] = 0  # 공책 줄·밑줄처럼 가로로 길게 이어진 선은 글자가 아님
     rows = np.where(ink.sum(1) > 0)[0]
     th = (rows[-1] - rows[0] + 1) if len(rows) else h  # 실제 글자 높이
     col = ink.sum(0) > max(1, th * 0.06)  # 모눈·얼룩 같은 옅은 잡티는 빈칸으로 봄
@@ -186,11 +187,16 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float]) -> list[str]:
     first, last = (np.argmax(col), w - np.argmax(col[::-1])) if col.any() else (0, w)
     inner = [(a, b) for a, b in gaps if a > first and b < last]
     lim = th * 0.28
-    # 글자가 하나하나 떨어진 글씨(인쇄체·자간 넓은 글씨)는 글자 사이 틈이 모두 넓으므로, 보통 틈보다 확실히 넓은 것만 띄어쓰기로 본다
+    # 글자가 하나하나 떨어진 글씨(인쇄체·또박또박 쓴 손글씨)는 글자 사이에도 틈이 있다.
+    # 틈 너비를 크기순으로 놓고 '글자 사이 틈'과 '낱말 사이 틈'이 갈리는 지점(가장 크게 벌어지는 곳)을 찾아 기준으로 삼는다.
     n_ch = sum(1 for c in chars if c != " ")
     if len(inner) >= max(3, n_ch * 0.5):
-        widths = sorted(b - a for a, b in inner)
-        lim = max(lim, widths[len(widths) // 2] * 1.7)
+        ws = sorted(b - a for a, b in inner)
+        best, cut = 1.0, None
+        for k in range(max(1, len(ws) // 3), len(ws)):
+            if ws[k] >= th * 0.18 and ws[k - 1] > 0 and ws[k] / ws[k - 1] > best:
+                best, cut = ws[k] / ws[k - 1], (ws[k] + ws[k - 1]) / 2
+        lim = cut if cut is not None and best >= 1.45 else max(lim, ws[len(ws) // 2] * 1.7)
     gaps = [(a, b) for a, b in inner if (b - a) >= lim]
     if not gaps:
         return chars
