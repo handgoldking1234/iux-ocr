@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   const ORT = 'web/vendor/ort/', MODELS = 'models/';
-  const S = { ready: null, det: null, rec: null, hw: null, chars: null };
+  const S = { ready: null, det: null, rec: null, hw: null, zh: null, chars: null, zchars: null, zmask: null };
   const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; };
   function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error(src + ' 로드 실패')); document.head.appendChild(s); }); }
   async function fetchBuf(url, onp) {
@@ -21,11 +21,11 @@
       ort.env.wasm.wasmPaths = new URL(ORT, location.href).href;
       ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
       ort.env.logLevel = 'error';
-      const TOTAL = 33e6; let got = 0;
+      const TOTAL = 54e6; let got = 0;
       const onp = n => { got += n; onProgress && onProgress(Math.min(0.99, got / TOTAL)); };
-      const [det, rec, hw, dict] = await Promise.all([
-        fetchBuf(MODELS + 'iux_det.onnx', onp), fetchBuf(MODELS + 'iux_rec_ko.onnx', onp), fetchBuf(MODELS + 'iux_rec_hw.onnx', onp),
-        fetch(MODELS + 'iux_rec_ko_dict.txt').then(r => r.text()),
+      const [det, rec, hw, zh, dict, zdict, ks] = await Promise.all([
+        fetchBuf(MODELS + 'iux_det.onnx', onp), fetchBuf(MODELS + 'iux_rec_ko.onnx', onp), fetchBuf(MODELS + 'iux_rec_hw.onnx', onp), fetchBuf(MODELS + 'iux_rec_zh.onnx', onp),
+        fetch(MODELS + 'iux_rec_ko_dict.txt').then(r => r.text()), fetch(MODELS + 'iux_rec_zh_dict.txt').then(r => r.text()), fetch(MODELS + 'iux_rec_zh_ks.txt').then(r => r.text()),
       ]);
       const opt = { executionProviders: ['wasm'], graphOptimizationLevel: 'all' };
       S.det = await ort.InferenceSession.create(det, opt);
@@ -33,6 +33,12 @@
       S.hw = await ort.InferenceSession.create(hw, opt);
       const ch = dict.split('\n'); if (ch[ch.length - 1] === '') ch.pop();
       S.chars = ['', ...ch, ' '];
+      S.zh = await ort.InferenceSession.create(zh, opt);
+      const zc = zdict.split('\n'); if (zc[zc.length - 1] === '') zc.pop();
+      S.zchars = ['', ...zc, ' '];
+      // 한국에서 쓰는 한자(KS X 1001)와 숫자·영문·기호만 → 간체 대신 정자(번체)
+      const ksSet = new Set([...ks.trim()]), isHz = c => /[\u3400-\u9fff\uf900-\ufaff]/.test(c);
+      S.zmask = new Uint8Array(S.zchars.length); S.zchars.forEach((c, i) => { S.zmask[i] = (c && isHz(c) && !ksSet.has(c)) ? 1 : 0; });
       onProgress && onProgress(1);
     })().catch(e => { S.ready = null; throw e; });
     return S.ready;
@@ -201,6 +207,55 @@
   }
 
   /* ---------- 전체: 찾기 → 읽기 → 순서 정리 ---------- */
+  /* 띄어쓰기 처리 전의 글자·확신도·가로 위치 (한 줄씩) */
+  async function recRaw(sess, chars, c, mask) {
+    const H = 48, w0 = Math.max(8, Math.round(H * c.width / c.height)), W = Math.min(3200, Math.max(160, Math.ceil(w0 / 32) * 32)), w = Math.min(w0, W);
+    const t = mk(w, H), x = t.getContext('2d', { willReadFrequently: true }); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, w, H);
+    const d = x.getImageData(0, 0, w, H).data, f = new Float32Array(3 * H * W);
+    for (let y = 0; y < H; y++) for (let xx = 0; xx < w; xx++) { const p = (y * w + xx) * 4, q = y * W + xx; f[q] = d[p + 2] / 127.5 - 1; f[H * W + q] = d[p + 1] / 127.5 - 1; f[2 * H * W + q] = d[p] / 127.5 - 1; }
+    const o = (await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', f, [1, 3, H, W]) }))[sess.outputNames[0]];
+    const [, T, C] = o.dims, data = o.data, ch = [], ps = [], xs = []; let prev = 0;
+    for (let tt = 0; tt < T; tt++) {
+      const off = tt * C; let best = 0, bv = data[off];
+      for (let k = 1; k < C; k++) { if (mask && mask[k]) continue; const v = data[off + k]; if (v > bv) { bv = v; best = k; } }
+      if (best !== 0 && best !== prev && best < chars.length) { ch.push(chars[best]); ps.push(bv); xs.push((tt + 0.5) / T * W / w); }
+      prev = best;
+    }
+    return { ch, ps, xs };
+  }
+  const isHz = c => /^[\u3400-\u9fff\uf900-\ufaff]$/.test(c), isKo = c => /^[가-힣]$/.test(c);
+  /* 한글 결과 cur 와 한자 모델 결과를 글자 위치로 맞춰 합친다 (app/iux_engine.py _hanja_line 과 같은 규칙) */
+  async function hanjaLine(c, cur, z) {
+    const strong = z.ch.map((ch, k) => isHz(ch) && z.ps[k] >= 0.9 ? k : -1).filter(k => k >= 0);
+    if (!strong.length) return null;
+    const core = z.ch.filter(ch => ch.trim()), nHz = core.filter(isHz).length;
+    const zc = z.ps.length ? z.ps.reduce((a, b) => a + b, 0) / z.ps.length : 0;
+    const raws = [await recRaw(S.rec, S.chars, c), await recRaw(S.hw, S.chars, c)];
+    const mean = r => r.ps.length ? r.ps.reduce((a, b) => a + b, 0) / r.ps.length : 0;
+    const k0 = mean(raws[0]) >= mean(raws[1]) ? raws[0] : raws[1];
+    const gaps = z.xs.slice(1).map((v, i) => v - z.xs[i]).filter(v => v > 0), half = (gaps.length ? Math.min(...gaps) : 0.5 / Math.max(1, z.ch.length)) * 0.6;
+    const nearest = x => { let j = -1, d = 1e9; k0.xs.forEach((v, i) => { const e = Math.abs(v - x); if (e <= half && e < d) { d = e; j = i; } }); return j; };
+    if (nHz >= core.length * 0.6 && zc > cur.conf + 0.1 && zc >= 0.7) { // 줄 전체가 한자
+      const ch = [...z.ch], ps = [...z.ps];
+      ch.forEach((cc, k) => { if (isHz(cc) && ps[k] < 0.97) { const j = nearest(z.xs[k]); if (j >= 0 && isKo(k0.ch[j]) && k0.ps[j] >= 0.9) { ch[k] = k0.ch[j]; ps[k] = k0.ps[j]; } } });
+      const [rc, rp] = respace(c, ch, z.xs, ps);
+      return { text: rc.join('').trim(), conf: zc, ps: rp };
+    }
+    const used = new Set(), drop = new Set(), add = [];
+    for (const k of strong) {
+      const j = nearest(z.xs[k]);
+      if (j < 0 || used.has(j)) { add.push([z.xs[k], z.ch[k], z.ps[k]]); continue; }
+      used.add(j);
+      if ((!isKo(k0.ch[j]) && k0.ps[j] < 0.9) || k0.ps[j] < 0.5) { drop.add(j); add.push([z.xs[k], z.ch[k], z.ps[k]]); }
+    }
+    if (!add.length) return null;
+    const seq = k0.ch.map((ch, j) => [k0.xs[j], ch, k0.ps[j], j]).filter(t => !drop.has(t[3])).map(t => t.slice(0, 3)).concat(add).sort((a, b) => a[0] - b[0]);
+    let [rc, rp] = respace(c, seq.map(t => t[1]), seq.map(t => t[0]), seq.map(t => t[2]));
+    while (rc.length && rc[0] === ' ') { rc = rc.slice(1); rp = rp.slice(1); }
+    while (rc.length && rc[rc.length - 1] === ' ') { rc = rc.slice(0, -1); rp = rp.slice(0, -1); }
+    const real = rp.filter((p, i) => rc[i] !== ' ');
+    return { text: rc.join(''), conf: real.length ? real.reduce((a, b) => a + b, 0) / real.length : 0, ps: rp };
+  }
   /* 빨강·주황·노랑(직인·무궁화 바탕·형광펜)을 밝기로 바꿔 흰색에 가깝게 — 겹친 검은 글씨는 그대로 남음 */
   function decolor(src) {
     const w = src.width, h = src.height, c = mk(w, h), x = c.getContext('2d', { willReadFrequently: true });
@@ -237,11 +292,12 @@
     for (const b of boxes) { const cs = srcs.map(s => cropBox(s, b)); if (cs[0].width >= 6 && cs[0].height >= 6) { cs.forEach((c, k) => per[k].push(c)); keep.push(b); } }
     let res = keep.length ? await recBest(per[0]) : [];
     for (let k = 1; k < srcs.length && keep.length; k++) { const alt = await recBest(per[k]); res = res.map((a, i) => (alt[i].text && alt[i].conf > a.conf + 0.01) || !a.text ? alt[i] : a); }
+    if (S.zh) for (let i = 0; i < res.length; i++) { const z = await recRaw(S.zh, S.zchars, per[0][i], S.zmask); const h = await hanjaLine(per[0][i], res[i], z); if (h && h.text) res[i] = h; } // 한자 읽기
     const items = [];
     res.forEach((r, i) => {
-      const t = r.text; if (!t || !/[가-힣A-Za-z0-9]/.test(t)) return;
+      const t = r.text; if (!t || !/[가-힣A-Za-z0-9\u3400-\u9fff]/.test(t)) return;
       const core = t.replace(/\s+/g, '');
-      if ((core.length <= 2 && r.conf < 0.6) || (!/[가-힣]/.test(core) && r.conf < 0.55)) return;
+      if ((core.length <= 2 && r.conf < 0.6) || (!/[가-힣\u3400-\u9fff]/.test(core) && r.conf < 0.55)) return;
       const chk = []; [...t].forEach((ch, k) => { if (/[0-9]/.test(ch) && r.ps && r.ps[k] < 0.9) chk.push(k); });
       const b = keep[i]; items.push({ b, text: t, conf: r.conf, chk, ang: b.vertical ? null : Math.atan2(b.uy, b.ux) * 180 / Math.PI });
     });

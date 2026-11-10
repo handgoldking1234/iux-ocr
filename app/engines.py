@@ -460,8 +460,8 @@ def run_iux(gray: np.ndarray, color: np.ndarray | None = None, lang: str = "kor+
     원본 색상 이미지를 그대로 읽는 쪽이 정확해서(모눈·줄 공책 등) 원본을 우선 쓴다."""
     from . import iux_engine
     img = color if color is not None and color.size else gray
-    # 색 도장 지우기·흐린 글씨 진하게는 늘 켬, 한자는 언어에 한자(chi_tra)를 고른 경우에만
-    return _finish("iux", iux_engine.read_lines(img, {"hanja": "chi_tra" in (lang or "")}))
+    # 색 도장 지우기·흐린 글씨 진하게·한자 읽기 모두 켬 (한글 문서 정확도에 영향 없음을 확인)
+    return _finish("iux", iux_engine.read_lines(img))
 
 
 def iux_info() -> dict:

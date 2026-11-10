@@ -220,7 +220,7 @@
   async function iuxRead(canvasEl) {
     if (!window.IUX) await loadScript('web/iux.js');
     const first = !IUX.loaded();
-    if (first && window.toast) toast('손글씨 엔진을 준비하는 중입니다 (처음 한 번, 약 45MB)');
+    if (first && window.toast) toast('손글씨 엔진을 준비하는 중입니다 (처음 한 번, 약 70MB)');
     return IUX.readLines(canvasEl, f => { const pct = Math.floor(f * 10); if (first && pct > iuxNote && pct < 10 && window.setBusy) { iuxNote = pct; } });
   }
   /* ---------------- Tesseract.js ---------------- */

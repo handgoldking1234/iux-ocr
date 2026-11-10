@@ -18,8 +18,12 @@ DET_NAME = "iux_det.onnx"
 REC_NAME = "iux_rec_ko.onnx"   # 인쇄체 위주 (PP-OCRv5 한국어)
 HW_NAME = "iux_rec_hw.onnx"    # 손글씨 추가 학습 모델 (korean-handwriting-rec, AI Hub 손글씨 386만 단어)
 DICT_NAME = "iux_rec_ko_dict.txt"
+ZH_NAME = "iux_rec_zh.onnx"            # 한자 읽기 (PaddleOCR PP-OCRv6 small rec, 한자·영숫자)
+ZH_DICT = "iux_rec_zh_dict.txt"
 
 _lock = threading.Lock()
+_zh_chars: list[str] = []
+_zh_mask = None
 _sess: dict = {}
 _chars: list[str] | None = None
 
@@ -72,6 +76,25 @@ def _load():
         if chars and chars[-1] == "":
             chars.pop()
         _chars = ["", *chars, " "]  # 0 = CTC blank, 끝 = 공백
+        if (d / ZH_NAME).exists() and (d / ZH_DICT).exists():
+            global _zh_chars, _zh_mask
+            _sess["zh"] = ort.InferenceSession((d / ZH_NAME).read_bytes(), so, providers=["CPUExecutionProvider"])
+            zc = (d / ZH_DICT).read_text(encoding="utf-8").split("\n")
+            if zc and zc[-1] == "":
+                zc.pop()
+            _zh_chars = ["", *zc, " "]
+            # 한국에서 쓰는 한자(KS X 1001, 4,888자)와 숫자·영문·기호만 남긴다 → 간체 대신 정자(번체)로 나옴
+            def ok(c: str) -> bool:
+                if not c or c == " ":
+                    return True
+                if not any("\u3400" <= x <= "\u9fff" or "\uf900" <= x <= "\ufaff" for x in c):
+                    return True
+                try:
+                    c.encode("euc-kr")
+                    return True
+                except UnicodeEncodeError:
+                    return False
+            _zh_mask = np.array([0.0] + [0.0 if ok(c) else -1.0 for c in zc] + [0.0], np.float32)
 
 
 # ---------------- 글줄 찾기 (DB) ----------------
@@ -168,6 +191,44 @@ def _rec(crops: list[np.ndarray], batch: int = 8, which: str = "rec") -> list[tu
             while txt and txt[-1] == " ":
                 txt, pr = txt[:-1], pr[:-1]
             out[i] = ("".join(txt), float(np.mean(cs)) if cs else 0.0, pr)
+    return out
+
+
+def _rec_zh(crops: list[np.ndarray], batch: int = 8) -> list[tuple[str, float, list[float], list[float]]]:
+    """한자 모델로 읽는다. (글자, 평균 확신도, 글자별 확신도, 글자별 가로 위치 0~1)"""
+    out: list = [("", 0.0, [], [])] * len(crops)
+    if "zh" not in _sess or not crops:
+        return out
+    s_ = _sess["zh"]
+    name = s_.get_inputs()[0].name
+    H = 48
+    order = sorted(range(len(crops)), key=lambda i: crops[i].shape[1] / max(1, crops[i].shape[0]))
+    for b in range(0, len(order), batch):
+        idx = order[b:b + batch]
+        ratio = max(crops[i].shape[1] / max(1, crops[i].shape[0]) for i in idx)
+        W = int(min(3200, max(160, np.ceil(H * ratio / 32) * 32)))
+        x = np.zeros((len(idx), 3, H, W), np.float32)
+        ws = []
+        for k, i in enumerate(idx):
+            c = crops[i]
+            w = min(W, max(8, int(round(H * c.shape[1] / max(1, c.shape[0])))))
+            ws.append(w)
+            r = cv2.resize(c, (w, H), interpolation=cv2.INTER_CUBIC if c.shape[0] < H else cv2.INTER_AREA)
+            x[k, :, :, :w] = ((r.astype(np.float32) / 255.0 - 0.5) / 0.5).transpose(2, 0, 1)
+        prob = s_.run(None, {name: x})[0]
+        if _zh_mask is not None and prob.shape[2] == len(_zh_mask):
+            prob = np.where(_zh_mask[None, None, :] < 0, 0.0, prob)  # 간체 등 한국에서 안 쓰는 글자는 뺀다
+        ids, ps = prob.argmax(2), prob.max(2)
+        T = prob.shape[1]
+        for k, i in enumerate(idx):
+            txt, cs, xs, prev = [], [], [], 0
+            for t, (ci, p) in enumerate(zip(ids[k], ps[k])):
+                if ci != 0 and ci != prev and ci < len(_zh_chars):
+                    txt.append(_zh_chars[ci])
+                    cs.append(float(p))
+                    xs.append((t + 0.5) / T * W / ws[k])
+                prev = ci
+            out[i] = ("".join(txt), float(np.mean(cs)) if cs else 0.0, cs, xs)
     return out
 
 
@@ -351,139 +412,128 @@ CHECK_P = float(os.environ.get("IUX_CHECK_P", "0.9"))
 _HANJA = _re.compile(r"[\u3400-\u9fff\uf900-\ufaff]")
 
 
-def _tess_hanja(img: np.ndarray, psms: tuple = (7,)) -> tuple[str, float]:
-    """한자 데이터(chi_tra)로 한 덩어리를 읽는다. (글자, 평균 확신도 0~100). 실패하면 ("", 0)."""
-    from . import engines
-    try:
-        if engines._tess_cmd is None:
-            engines.tesseract_info()
-        g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
-        s = max(1.0, 64 / max(1, g.shape[0]))
-        g = cv2.resize(g, None, fx=s, fy=s, interpolation=cv2.INTER_CUBIC)
-        g = cv2.copyMakeBorder(g, 12, 12, 12, 12, cv2.BORDER_CONSTANT, value=255)
-        best = ("", 0.0)
-        for psm in psms:
-            _, tsv = engines._tess_txt_tsv(g, "chi_tra", psm)
-            d = engines._parse_tsv(tsv)
-            ws = [(t.strip(), c) for t, c in zip(d.get("text", []), d.get("conf", [])) if t and t.strip() and isinstance(c, float) and c >= 0]
-            if ws:
-                c = sum(c for _, c in ws) / len(ws)
-                if c > best[1]:
-                    best = ("".join(t for t, _ in ws), c)
-        return best
-    except Exception:
-        return ("", 0.0)
+def _is_hz(ch: str) -> bool:
+    return bool(_HANJA.match(ch))
 
 
-def _is_hanja(t: str, cf: float) -> bool:
-    core = _re.sub(r"\s+", "", t)
-    if not core or len(_HANJA.findall(core)) != len(core):
-        return False
-    return (len(core) >= 2 and cf >= 70) or cf >= 88
-
-
-def has_hanja_data() -> bool:
-    from . import engines
-    try:
-        info = engines.tesseract_info()
-        return "chi_tra" in (info.get("langs") or [])
-    except Exception:
-        return False
-
-
-def _hanja_line(crop: np.ndarray, cur: tuple) -> tuple | None:
-    """한 글줄에서 IUX가 못 읽는(확신 낮은) 낱말을 한자로 다시 읽어 본다. 한자를 찾았으면 새 결과, 아니면 None."""
-    if cur[0] and cur[1] >= 0.985:
-        return None
-    if crop.shape[1] <= crop.shape[0] * 1.6:  # 한두 글자짜리 덩어리
-        if cur[1] >= 0.6 and cur[0]:
-            return None
-        t, cf = _tess_hanja(crop, (7, 8, 10))
-        return (t, cf / 100, [1.0] * len(t)) if _is_hanja(t, cf) else None
-    spans = _word_spans(crop)
-    if len(spans) < 2:
-        if cur[1] >= 0.6 and cur[0]:
-            return None
-        t, cf = _tess_hanja(crop, (7, 8))
-        return (t, cf / 100, [1.0] * len(t)) if _is_hanja(t, cf) else None
-    # 줄 전체가 한자일 수도 있다 (한자 위주 문서): IUX가 거의 못 읽은 줄은 통째로 먼저 시도
-    if not cur[0] or cur[1] < 0.6:
-        t, cf = _tess_hanja(crop, (7,))
-        if _is_hanja(t, cf):
-            return (t, cf / 100, [1.0] * len(t))
-    pieces = [crop[:, a:b] for a, b in spans]
-    rr = _rec_best(pieces)
-    low = [i for i, r in enumerate(rr) if (not r[0] or r[1] < 0.7) and not _re.search(r"[0-9*#@%()\-]", r[0] or "")]
-    if not low:
-        return None
-    hz: dict[int, tuple[int, str, float]] = {}  # 시작 조각 → (끝 조각, 한자, 확신도)
-    used: set[int] = set()
-    for i in low:
-        if i in used:
+def _zh_piece(crop: np.ndarray, z: tuple) -> tuple:
+    """한자 모델로 읽은 낱말에서 확신이 낮은 글자(대개 한자 뒤에 붙은 조사 '를·와·에' 같은 한글)는
+    그 자리만 잘라 한글 모델로 다시 읽어 바꾼다."""
+    t, cf, ps, xs = z
+    if not t:
+        return ("", 0.0, [])
+    w = crop.shape[1]
+    out, pr, k = [], [], 0
+    while k < len(t):
+        if ps[k] >= 0.6 or not _is_hz(t[k]):
+            out.append(t[k]); pr.append(ps[k]); k += 1
             continue
-        t, cf = _tess_hanja(pieces[i])
-        core = _re.sub(r"\s+", "", t)
-        if not core or len(_HANJA.findall(core)) != len(core) or cf < 55:
-            continue  # 한자 후보가 아님
-        best = (i, i, t, cf)
-        # 이웃 조각(낱글자로 떨어진 한자 이름 등)으로 넓혀 가며 여전히 한자로 읽히면 묶는다
-        sure_ko = lambda k: rr[k][1] >= 0.97 and len(rr[k][0]) >= 2 and not _re.search(r"[0-9]", rr[k][0])
-        for step in (-1, 1):
-            while True:
-                a, b = best[0], best[1]
-                k = a - 1 if step < 0 else b + 1
-                if k < 0 or k >= len(spans) or k in used or sure_ko(k):
-                    break
-                a2, b2 = (k, b) if step < 0 else (a, k)
-                t2, cf2 = _tess_hanja(crop[:, spans[a2][0]:spans[b2][1]])
-                c2 = _re.sub(r"\s+", "", t2)
-                if not (c2 and len(_HANJA.findall(c2)) == len(c2) and cf2 >= 55 and len(c2) > len(_re.sub(r"\s+", "", best[2]))):
-                    break
-                best = (a2, b2, t2, cf2)
-        # 최종 판정: 두 글자 이상이면 확신 70 이상, 한 글자면 IUX가 거의 못 읽은 경우에만
-        if best and not (_is_hanja(best[2], best[3]) and (len(_re.sub(r"\s+", "", best[2])) >= 2 or rr[i][1] < 0.4)):
-            best = None
-        if best:
-            a, b, t, cf = best
-            hz[a] = (b, t, cf)
-            used.update(range(a, b + 1))
-    if not hz:
-        return None
-    # 한자가 아닌 구간은 이어 붙여 한 번에 다시 읽어 줄의 품질을 유지
-    segs, k = [], 0
-    while k < len(spans):
-        if k in hz:
-            b, t, cf = hz[k]
-            segs.append(("hz", t, cf / 100))
-            k = b + 1
+        j = k
+        while j + 1 < len(t) and ps[j + 1] < 0.6:
+            j += 1
+        half = (xs[1] - xs[0]) / 2 if len(xs) > 1 else 0.5 / max(1, len(t))
+        a = int(max(0, (xs[k] - half) * w)); b = int(min(w, (xs[j] + half) * w))
+        r = _rec_best([crop[:, a:b]])[0] if b - a > 4 else ("", 0.0, [])
+        if r[0] and _HAN.search(r[0]) and r[1] > max(ps[k:j + 1]):
+            out += list(r[0]); pr += list(r[2])
         else:
-            j = k
-            while j + 1 < len(spans) and (j + 1) not in hz:
-                j += 1
-            segs.append(("ko", spans[k][0], spans[j][1]))
-            k = j + 1
-    ko = [crop[:, x[1]:x[2]] for x in segs if x[0] == "ko"]
-    kr = iter(_rec_best(ko) if ko else [])
-    parts, pr, cfs = [], [], []
-    for x in segs:
-        r = (x[1], x[2], [1.0] * len(x[1])) if x[0] == "hz" else next(kr)
-        if not r[0]:
+            out += list(t[k:j + 1]); pr += ps[k:j + 1]
+        k = j + 1
+    return ("".join(out), float(np.mean(pr)) if pr else 0.0, pr)
+
+
+def _rec_raw(crops: list[np.ndarray], which: str) -> list[tuple[list[str], list[float], list[float]]]:
+    """띄어쓰기 처리 전의 (글자들, 글자별 확신도, 글자별 가로 위치 0~1)."""
+    out = []
+    s_ = _sess[which]
+    name = s_.get_inputs()[0].name
+    H = 48
+    for c in crops:
+        w = max(8, int(round(H * c.shape[1] / max(1, c.shape[0]))))
+        W = int(min(3200, max(160, np.ceil(w / 32) * 32)))
+        w = min(w, W)
+        r = cv2.resize(c, (w, H), interpolation=cv2.INTER_CUBIC if c.shape[0] < H else cv2.INTER_AREA)
+        x = np.zeros((1, 3, H, W), np.float32)
+        x[0, :, :, :w] = ((r.astype(np.float32) / 255.0 - 0.5) / 0.5).transpose(2, 0, 1)
+        prob = s_.run(None, {name: x})[0][0]
+        ids, ps = prob.argmax(1), prob.max(1)
+        T = prob.shape[0]
+        ch, pr, xs, prev = [], [], [], 0
+        for t, (ci, p) in enumerate(zip(ids, ps)):
+            if ci != 0 and ci != prev and ci < len(_chars):
+                ch.append(_chars[ci]); pr.append(float(p)); xs.append((t + 0.5) / T * W / w)
+            prev = ci
+        out.append((ch, pr, xs))
+    return out
+
+
+HZ_P = float(os.environ.get("IUX_HZ_P", "0.9"))
+
+
+def _hanja_line(crop: np.ndarray, cur: tuple, z: tuple) -> tuple | None:
+    """한글 결과 cur 와 한자 모델 결과 z(글자, 확신도, 글자별 확신도, 위치)를 글자 위치로 맞춰 합친다.
+    한자 모델이 확신하는 한자는, 한글 모델이 그 자리를 비웠거나 덜 확신할 때만 넣는다. 바꿀 게 없으면 None."""
+    zt, zc, zp, zx = z
+    strong = [k for k, ch in enumerate(zt) if _is_hz(ch) and zp[k] >= HZ_P]
+    if not strong:
+        return None
+    core = [ch for ch in zt if not ch.isspace()]
+    n_hz = sum(1 for ch in core if _is_hz(ch))
+    # 줄 전체가 한자(한자 위주 문서): 한자 모델이 뚜렷이 더 확신하면 통째로
+    raws = [_rec_raw([crop], w)[0] for w in ("rec", "hw") if w in _sess]
+    kc, kp, kx = max(raws, key=lambda r: (np.mean(r[1]) if r[1] else 0.0))
+    if n_hz >= len(core) * 0.6 and zc > cur[1] + 0.1 and zc >= 0.7:
+        t, cf, ps = _zh_piece(crop, z)
+        if len(t) == len(zx):  # 한자 모델이 한자로 착각한 한글(예: 斜라→斜斗)은 같은 자리 한글 모델이 확신하면 한글로
+            step0 = min([b - a for a, b in zip(zx, zx[1:]) if b > a] or [0.5 / max(1, len(zt))]) * 0.6
+            tl = list(t)
+            for k, ch in enumerate(tl):
+                if _is_hz(ch) and ps[k] < 0.97:
+                    near = [j for j in range(len(kc)) if abs(kx[j] - zx[k]) <= step0]
+                    if near:
+                        j = min(near, key=lambda j: abs(kx[j] - zx[k]))
+                        if _HAN.match(kc[j]) and kp[j] >= 0.9:
+                            tl[k], ps[k] = kc[j], kp[j]
+            t = "".join(tl)
+        return (t, cf, ps)
+    # 섞인 줄: 한글 모델 글자들에 한자를 위치로 끼워 넣는다
+    step = min([b - a for a, b in zip(zx, zx[1:]) if b > a] or [0.5 / max(1, len(zt))])
+    half = step * 0.6
+    used_k: set[int] = set()
+    add: list[tuple[float, str, float]] = []
+    drop: set[int] = set()
+    for k in strong:
+        x = zx[k]
+        near = [j for j in range(len(kc)) if abs(kx[j] - x) <= half and j not in used_k]
+        if not near:
+            add.append((x, zt[k], zp[k]))  # 한글 모델이 비워 둔 자리 → 한자
             continue
-        if parts:
-            pr.append(1.0)
-        parts.append(r[0])
-        pr += list(r[2])
-        cfs.append((r[1], len(r[0])))
-    n = sum(k for _, k in cfs)
-    return (" ".join(parts), sum(c * k for c, k in cfs) / n if n else 0.0, pr)
+        j = min(near, key=lambda j: abs(kx[j] - x))
+        if (not _HAN.match(kc[j]) and kp[j] < 0.9) or kp[j] < 0.5:
+            used_k.add(j); drop.add(j)
+            add.append((x, zt[k], zp[k]))
+        else:
+            used_k.add(j)
+    if not add:
+        return None
+    seq = [(kx[j], kc[j], kp[j]) for j in range(len(kc)) if j not in drop] + add
+    seq.sort(key=lambda t: t[0])
+    chars, xs, ps = [t[1] for t in seq], [t[0] for t in seq], [t[2] for t in seq]
+    chars, ps = _respace(crop, chars, xs, ps)
+    while chars and chars[0] == " ":
+        chars, ps = chars[1:], ps[1:]
+    while chars and chars[-1] == " ":
+        chars, ps = chars[:-1], ps[:-1]
+    real = [p for c, p in zip(chars, ps) if c != " "]
+    return ("".join(chars), float(np.mean(real)) if real else 0.0, ps)
 
 
 def read_lines(bgr: np.ndarray, opts: dict | None = None) -> list[dict]:
     """이미지 전체에서 글줄을 찾아 읽고, 읽는 순서대로 정리해 돌려준다.
     비스듬히 찍은 사진(기울어진 글줄)과 세로쓰기(오른쪽 줄부터)도 순서를 맞춘다.
-    opts: decolor(색 도장 지우기, 기본 켬), faint(흐린 글씨 진하게, 기본 켬)"""
+    opts: decolor(색 도장 지우기), faint(흐린 글씨 진하게), hanja(한자 읽기) — 모두 기본 켬"""
     _load()
-    o = {"decolor": True, "faint": True, "hanja": False, **(opts or {})}
+    o = {"decolor": True, "faint": True, "hanja": True, **(opts or {})}
     if bgr.ndim == 2:
         bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
     h, w = bgr.shape[:2]
@@ -511,8 +561,9 @@ def read_lines(bgr: np.ndarray, opts: dict | None = None) -> list[dict]:
             break
         alt = _rec_best(per[k])
         res = [b if (b[0] and b[1] > a[1] + 0.01) or not a[0] else a for a, b in zip(res, alt)]
-    if o["hanja"] and keep and has_hanja_data():
-        res = [(_hanja_line(c, r) or r) for c, r in zip(per[0], res)]
+    if o["hanja"] and keep and "zh" in _sess:
+        zs = _rec_zh(per[0])
+        res = [(_hanja_line(c, r, z) or r) for c, r, z in zip(per[0], res, zs)]
     items = []
     for pts, (t, cf, pr) in zip(keep, res):
         if not t or not _MEAN.search(t):
