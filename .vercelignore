@@ -11,3 +11,4 @@ docs/
 run_windows.bat
 run_mac_linux.sh
 app/*.py
+models/

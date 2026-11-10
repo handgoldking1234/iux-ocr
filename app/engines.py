@@ -441,6 +441,8 @@ def run_engine(engine: str, gray: np.ndarray, color: np.ndarray, lang: str, psm:
     t = time.time()
     if engine == "tesseract":
         res = run_tesseract(gray, lang=lang, psm=psm, fix_spacing=fix_spacing)
+    elif engine == "iux":
+        res = run_iux(gray)
     elif engine == "paddle":
         res = run_paddle(gray)
     elif engine == "ollama":
@@ -453,9 +455,25 @@ def run_engine(engine: str, gray: np.ndarray, color: np.ndarray, lang: str, psm:
     return res
 
 
+def run_iux(gray: np.ndarray) -> dict:
+    """IUX 엔진: 내장 딥러닝 모델(ONNX, CPU)로 글줄을 찾아 읽는다. 손글씨·흐린 글씨에 강함."""
+    from . import iux_engine
+    lines = _reading_order(iux_engine.read_lines(gray))
+    return _finish("iux", lines)
+
+
+def iux_info() -> dict:
+    try:
+        from . import iux_engine
+        return iux_engine.info()
+    except Exception as e:  # noqa: BLE001
+        return {"available": False, "reason": str(e)}
+
+
 def engines_status() -> dict:
     return {
         "tesseract": tesseract_info(),
+        "iux": iux_info(),
         "paddle": paddle_info(),
         "ollama": ollama_info(),
         "python": sys.version.split()[0],

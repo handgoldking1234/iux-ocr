@@ -468,7 +468,7 @@ table.fields td[contenteditable]{outline:none}
         <div class="row"><span class="lbl">엔진</span>
           <div class="eng" id="engSel">
             <button data-e="tesseract"><span class="tag">일반 PC</span><b>빠름</b><small>Tesseract</small></button>
-            <button data-e="paddle"><span class="tag">CPU</span><b>정확</b><small>PaddleOCR</small></button>
+            <button data-e="iux"><span class="tag">손글씨</span><b>정확</b><small>IUX 엔진</small></button>
             <button data-e="ollama"><span class="tag">GPU</span><b>AI</b><small>Ollama 비전</small></button>
           </div>
         </div>
@@ -793,14 +793,14 @@ async function loadEngines(){
   try{S.engines=await api('/api/engines')}catch(e){toast('서버에 연결할 수 없습니다: '+e.message,true);return}
   const E=S.engines;
   const pill=(on,warn,label,sub)=>`<button class="pill" data-help><span class="dot ${on?(warn?'warn':'on'):''}"></span><b>${label}</b><span>${esc(sub)}</span></button>`;
-  const t=E.tesseract,p=E.paddle,o=E.ollama;
+  const t=E.tesseract,p=E.iux||{available:false},o=E.ollama;
   $('#pills').innerHTML=
     pill(t.available,t.available&&!t.has_kor,'Tesseract',t.available?(t.has_kor?'v'+t.version.split(' ')[0]:'한국어 데이터 없음'):'미설치')+
-    pill(p.available,false,'PaddleOCR',p.available?'사용 가능':'미설치')+
+    pill(p.available,false,'IUX 엔진',p.available?'손글씨·오프라인':'PC 버전 전용')+
     pill(o.available,false,'Ollama',o.available?`모델 ${o.models.length}개`:'꺼짐');
   $$('[data-help]').forEach(b=>b.onclick=openHelp);
   // 엔진 버튼
-  $$('#engSel button').forEach(b=>{const e=b.dataset.e;const ok=e==='tesseract'?t.available:e==='paddle'?p.available:(o.available&&o.vision.length>0);b.disabled=!ok;b.title=ok?'':(e==='ollama'&&o.available?'비전(이미지) 모델이 없습니다. 예: ollama pull qwen2.5vl:7b':(E[e]?.reason||'사용 불가'))});
+  $$('#engSel button').forEach(b=>{const e=b.dataset.e;const ok=e==='tesseract'?t.available:e==='iux'?p.available:(o.available&&o.vision.length>0);b.disabled=!ok;b.title=ok?'':(e==='ollama'&&o.available?'비전(이미지) 모델이 없습니다. 예: ollama pull qwen2.5vl:7b':(E[e]?.reason||'사용 불가'))});
   if($(`#engSel button[data-e="${S.set.engine}"]`)?.disabled){const f=$$('#engSel button').find(b=>!b.disabled);S.set.engine=f?f.dataset.e:'tesseract'}
   $('#vlmSel').innerHTML=(o.vision||[]).map(m=>`<option ${m===S.set.vlm?'selected':''}>${esc(m)}</option>`).join('');
   if(!S.set.vlm&&o.vision?.length)S.set.vlm=o.vision[0];
@@ -812,6 +812,7 @@ async function loadEngines(){
   $('#aiCustomGo').disabled=!o.available;
   $('#aiNote').innerHTML=o.available?'':'AI 재가공은 Ollama 실행 시 켜집니다. 일반 재가공만으로도 모든 작업이 됩니다. <a href="#" data-help2>설치 안내</a>';
   $$('[data-help2]').forEach(a=>a.onclick=e=>{e.preventDefault();openHelp()});
+  if(p.available&&store.get('setver',1)<4){S.set.engine='iux';store.set('setver',4);saveSet()}  // IUX 엔진이 있으면 기본으로
   renderSettings();
 }
 function renderSettings(){
@@ -822,7 +823,7 @@ function renderSettings(){
   $$('#preChips .chip').forEach(c=>{c.classList.toggle('on',!!S.set.pre[c.dataset.k]);if(c.dataset.k==='fixSpacing'||c.dataset.k==='second')c.hidden=S.set.engine!=='tesseract'});
 }
 function openHelp(){
-  const E=S.engines||{tesseract:{},paddle:{},ollama:{}};
+  const E=S.engines||{tesseract:{},iux:{},ollama:{}};if(!E.iux)E.iux={};
   const b=(on)=>`<span class="badge ${on?'on':'off'}">${on?'사용 가능':'사용 불가'}</span>`;
   $('#helpBody').innerHTML=`
   <div class="box"><h5>빠름 · Tesseract ${b(E.tesseract.available&&E.tesseract.has_kor)}</h5>
@@ -831,8 +832,8 @@ function openHelp(){
    <li>기본 경로(<code>C:\\Program Files\\Tesseract-OCR</code>)에 설치하면 자동으로 찾습니다.</li>
    <li>인터넷이 없는 PC: 설치 파일을 USB로 옮겨 설치하거나, 프로그램 폴더의 <code>bin\\tesseract</code>에 통째로 복사(포터블).</li>
    <li>정확도 향상: <code>kor.traineddata</code>(tessdata_best)를 프로그램 폴더 <code>tessdata\\</code>에 넣으면 우선 사용합니다.</li></ol></div>
-  <div class="box"><h5>정확 · PaddleOCR (한국어 PP-OCRv5) ${b(E.paddle.available)}</h5>
-   <ol><li><code>install\\install_paddleocr.bat</code> 실행 (약 1GB, 인터넷 필요)</li><li>첫 인식 때 한국어 모델(약 20MB)을 받습니다. 이후엔 오프라인으로 동작합니다.</li><li>GPU 없이 일반 PC(CPU)에서 실사용 속도. 한글 정확도가 Tesseract보다 높습니다.</li></ol></div>
+  <div class="box"><h5>정확 · IUX 엔진 ${b(E.iux.available)}</h5>
+   <div class="muted">프로그램에 들어 있는 딥러닝 엔진입니다. 인터넷·GPU 없이 일반 PC에서 동작하고, 손글씨·흐린 글씨·얇은 글씨의 한글을 Tesseract보다 훨씬 잘 읽습니다. ${E.iux.available?'':'<br>⚠ '+esc(E.iux.reason||'PC 설치 버전에서 사용할 수 있습니다.')}</div></div>
   <div class="box"><h5>AI · Ollama ${b(E.ollama.available)}</h5>
    <div class="muted" style="margin-bottom:6px">${E.ollama.available?'설치된 모델: '+E.ollama.models.map(esc).join(', '):esc(E.ollama.reason||'')}</div>
    <ol><li>ollama.com 에서 Ollama 설치 후 실행</li><li>AI OCR(비전): <code>ollama pull qwen2.5vl:7b</code> (VRAM 8GB↑ 권장, 가벼운 PC는 <code>qwen2.5vl:3b</code>)</li>
@@ -942,7 +943,7 @@ function renderStats(){
   const p=curPage(),r=p?.result;
   if(!r){$('#stats').innerHTML='';return}
   const low=r.lines.filter(l=>l.conf!=null&&l.conf<LOW).length;
-  const eng={tesseract:'Tesseract',paddle:'PaddleOCR','pdf-text':'PDF 내장 텍스트',manual:'직접 입력'}[r.engine]||r.engine.replace('ollama:','AI · ');
+  const eng={tesseract:'Tesseract',iux:'IUX 엔진',paddle:'PaddleOCR','pdf-text':'PDF 내장 텍스트',manual:'직접 입력'}[r.engine]||r.engine.replace('ollama:','AI · ');
   $('#stats').innerHTML=`<span class="stat">엔진 <b>${esc(eng)}</b></span>`+
    (r.mean_conf!=null?`<span class="stat">평균 신뢰도 <b>${r.mean_conf}</b></span>`:'')+
    (low?`<span class="stat warn">확인 필요 <b>${low}줄</b></span>`:'')+
@@ -1436,7 +1437,7 @@ async function onSelected(b){
 }
 async function regionOcr(b,label){
   showSelPop(null,label);
-  try{const r=await api(`/api/docs/${S.doc.id}/ocr-region`,{json:{page:S.page,box:b,view:S.view==='proc'&&curPage()?.result?.pre?'proc':'image',engine:S.set.engine==='paddle'?'paddle':(S.set.engine==='ollama'?'ollama':'tesseract'),lang:S.set.lang,model:S.set.vlm||null}});
+  try{const r=await api(`/api/docs/${S.doc.id}/ocr-region`,{json:{page:S.page,box:b,view:S.view==='proc'&&curPage()?.result?.pre?'proc':'image',engine:S.set.engine==='iux'?'iux':(S.set.engine==='ollama'?'ollama':'tesseract'),lang:S.set.lang,model:S.set.vlm||null}});
     if(SEL.box!==b)return;showSelPop(r.text||'',`${label}${r.mean_conf!=null?` · 신뢰도 ${Math.round(r.mean_conf)}`:''}`)}
   catch(e){if(SEL.box===b)showSelPop('',`인식 실패: ${e.message}`)}
 }
@@ -1556,7 +1557,7 @@ function openBatch(){
   $('#bIn').value=store.get('bIn','');$('#bOut').value=store.get('bOut','');
   $('#bFmts').innerHTML=FMTS.map(([k,n])=>`<button class="chip ${bF.has(k)?'on':''}" data-bf="${k}">${n}</button>`).join('');
   $$('[data-bf]').forEach(c=>c.onclick=()=>{bF.has(c.dataset.bf)?bF.delete(c.dataset.bf):bF.add(c.dataset.bf);c.classList.toggle('on');store.set('batchFmts',[...bF])});
-  const eng={tesseract:'빠름(Tesseract)',paddle:'정확(PaddleOCR)',ollama:'AI('+S.set.vlm+')'}[S.set.engine];
+  const eng={tesseract:'빠름(Tesseract)',iux:'정확(IUX 엔진)',ollama:'AI('+S.set.vlm+')'}[S.set.engine];
   $('#bEngNote').innerHTML=`엔진·언어·전처리는 오른쪽 패널의 현재 설정(<b>${esc(eng)}</b>)을 따릅니다. 이미 텍스트가 있는 PDF는 OCR 없이 바로 추출합니다. 끝나면 출력 폴더에 <b>처리보고서(CSV)</b>가 생기고, 내 항목 템플릿을 고르면 <b>항목추출 엑셀</b>(파일당 한 줄)도 만들어집니다.`;
   $('#mBatch').classList.add('on');pollBatch();
 }

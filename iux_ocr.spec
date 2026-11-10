@@ -1,12 +1,12 @@
 # PyInstaller 빌드 설정 — pyinstaller iux_ocr.spec
 from PyInstaller.utils.hooks import collect_submodules
 
-hidden = collect_submodules("uvicorn") + ["multipart", "python_multipart", "pypdfium2", "reportlab.pdfbase.cidfonts"]
+hidden = collect_submodules("uvicorn") + ["onnxruntime", "multipart", "python_multipart", "pypdfium2", "reportlab.pdfbase.cidfonts"]
 
 a = Analysis(
     ["iux_ocr.py"],
     pathex=[],
-    datas=[("app/static", "app/static")],
+    datas=[("app/static", "app/static"), ("models", "models")],
     hiddenimports=hidden,
     excludes=["paddle", "paddleocr", "matplotlib", "IPython", "pytest", "scipy", "pandas", "torch", "tensorflow", "sklearn", "notebook", "jupyter", "playwright", "PyQt5", "PyQt6", "PySide6"],
 )

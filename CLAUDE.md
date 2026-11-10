@@ -17,7 +17,8 @@
 ## 파일
 ```
 app/server.py       로컬 서버 (API)
-app/engines.py      OCR 엔진 (Tesseract / PaddleOCR / AI)
+app/engines.py      OCR 엔진 (Tesseract / IUX 엔진 / AI)
+app/iux_engine.py   IUX 엔진 — 내장 딥러닝(ONNX, CPU·오프라인). 손글씨·흐린 글씨용. 모델은 models/ (PaddleOCR PP-OCRv5 한국어, Apache-2.0)
 app/preprocess.py   전처리 (기울기·이진화)
 app/extract.py      항목 추출  · app/refine.py 재가공 · app/exporters.py 저장(TXT/Word/Excel/PDF)
 app/static/index.html   화면 원본 (설치형·웹 공용)

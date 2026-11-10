@@ -468,6 +468,7 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     let m;
     if (p === '/api/engines') return {
       tesseract: { available: true, version: '5 (브라우저)', has_kor: true, path: '이 브라우저 (Tesseract.js, 오프라인 모델 포함)' },
+      iux: { available: false, reason: '정확(IUX 엔진)은 PC 설치 버전에서 사용할 수 있습니다.' },
       paddle: { available: false, reason: '정확 모드는 PC 설치 버전에서 사용할 수 있습니다.' },
       ollama: { available: false, reason: 'AI 모드는 PC 설치 버전에서 사용할 수 있습니다.', models: [], vision: [] },
       web: true,
