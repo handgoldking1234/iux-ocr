@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 
-def _line_mask(gray: np.ndarray) -> np.ndarray:
+def _line_mask(gray: np.ndarray, text_h: float = 0) -> np.ndarray:
     h, w = gray.shape
     _, b1 = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     blk = max(15, (min(w, h) // 25) | 1)
@@ -19,8 +19,8 @@ def _line_mask(gray: np.ndarray) -> np.ndarray:
     if (b1 > 0).mean() > 0.25:
         b1[:] = 0  # 그림자 진 사진: 전체 문턱값은 버림
     b = cv2.bitwise_or(b1, b2)
-    kh = max(20, w // 50)   # 가로선: 이 길이 이상 이어진 검은 점 (글자 가로획보다 길게)
-    kv = int(max(20, min(h, w * 1.6) // 40))   # 세로선: 글자 세로획보다 길게
+    kh = int(max(20, w // 50, text_h * 2.5))   # 가로선: 이 길이 이상 이어진 검은 점 (글자 가로획보다 길게)
+    kv = int(max(20, min(h, w * 1.6) // 40, text_h * 1.8))   # 세로선: 글자 세로획보다 길게
     hor = cv2.morphologyEx(b, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (kh, 1)))
     ver = cv2.morphologyEx(b, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, kv)))
     # 끊긴 선 잇기 (같은 방향 선끼리만)
@@ -46,7 +46,7 @@ def _cluster(vals: list[float], tol: float) -> list[float]:
     return [float(np.mean(g)) for g in groups]
 
 
-def find_tables(img: np.ndarray, scale_to: int = 2200) -> list[dict]:
+def find_tables(img: np.ndarray, scale_to: int = 2200, text_h: float = 0) -> list[dict]:
     """표 목록. 각 표: box(px), rows, cols, cells[{r,c,rs,cs,box(px)}]"""
     gray = img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     H, W = gray.shape
@@ -55,7 +55,7 @@ def find_tables(img: np.ndarray, scale_to: int = 2200) -> list[dict]:
     if g is gray:
         s = 1.0
     h, w = g.shape
-    m = _line_mask(g)
+    m = _line_mask(g, text_h * s)  # text_h: 글자 높이(원본 px) — 글자 획을 선으로 잘못 보지 않게
     n, lab, st, _ = cv2.connectedComponentsWithStats((m == 0).astype(np.uint8), connectivity=4)
     minw, minh = max(10, w * 0.008), max(10, h * 0.01)
     cand = []
@@ -283,3 +283,62 @@ def split_boxes(tables: list[dict], boxes: list) -> list:
         for a, b in segs:
             out.append((np.array([[a, y1], [b, y1], [b, y2], [a, y2]], np.float32), sc))
     return out
+
+
+def vlines(img: np.ndarray, text_h: float = 0, scale_to: int = 2200) -> list[tuple[float, float, float]]:
+    """세로선 조각 (x, y1, y2) — 닫힌 칸이 아니어도 양식의 세로선은 글을 나누는 경계로 쓴다."""
+    gray = img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    H, W = gray.shape
+    s = min(scale_to / max(H, W), 2400 / W, 3.0)
+    g = cv2.resize(gray, (round(W * s), round(H * s)), interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC) if abs(s - 1) > 0.05 else gray
+    if g is gray:
+        s = 1.0
+    h, w = g.shape
+    th = text_h * s
+    _, b1 = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    blk = max(15, (min(w, h) // 25) | 1)
+    b2 = cv2.adaptiveThreshold(g, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, blk, 8)
+    if (b1 > 0).mean() > 0.25:
+        b1[:] = 0
+    b = cv2.bitwise_or(b1, b2)
+    kv = int(max(20, th * 2.2))
+    ver = cv2.morphologyEx(b, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, kv)))
+    ver = cv2.morphologyEx(ver, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(9, kv // 3))))
+    n, _, st, _ = cv2.connectedComponentsWithStats(ver, connectivity=8)
+    out = []
+    for i in range(1, n):
+        x, y, bw, bh, area = st[i]
+        if bh < kv or bw > max(8, th * 0.35) or area > bw * bh * 0.95 and bw > 6:
+            continue  # 굵은 덩어리(사진·도장·굵은 획)는 선이 아님
+        out.append(((x + bw / 2) / s, y / s, (y + bh) / s))
+    return out
+
+
+def split_by_vlines(segs: list, boxes: list) -> list:
+    """세로선이 글줄 상자를 가로지르면(상자 높이의 70% 이상 덮음) 그 자리에서 자른다."""
+    if not segs:
+        return boxes
+    out = []
+    for pts, sc in boxes:
+        x1, y1, x2, y2 = float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())
+        hh = y2 - y1
+        e = pts[1] - pts[0]
+        an = abs(np.degrees(np.arctan2(e[1], e[0]))) % 180
+        if min(an, 180 - an) >= 4 or x2 - x1 < hh * 1.5:
+            out.append((pts, sc))
+            continue
+        cuts = sorted(x for x, a, b in segs if x1 + hh * 0.5 < x < x2 - hh * 0.5 and min(b, y2) - max(a, y1) >= hh * 0.7)
+        if not cuts:
+            out.append((pts, sc))
+            continue
+        xs = [x1] + cuts + [x2]
+        for a, b in zip(xs, xs[1:]):
+            if b - a >= hh * 0.4:
+                out.append((np.array([[a, y1], [b, y1], [b, y2], [a, y2]], np.float32), sc))
+    return out
+
+
+def has_vline(segs: list, xa: float, xb: float, ya: float, yb: float) -> bool:
+    """두 글 조각 사이(xa~xb)에 세로선이 있는지"""
+    hh = yb - ya
+    return any(xa - 2 <= x <= xb + 2 and min(b, yb) - max(a, ya) >= hh * 0.6 for x, a, b in segs)

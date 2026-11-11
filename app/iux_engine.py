@@ -550,15 +550,18 @@ def read_lines(bgr: np.ndarray, opts: dict | None = None, extra: dict | None = N
         if ratio > 0.003:
             srcs = [d] + srcs  # 도장 지운 이미지로 글줄을 찾고, 줄마다 원본과 비교해 나은 쪽을 쓴다
     boxes = _det(srcs[0])
-    tables = []
+    tables, vsegs = [], []
     if o.get("table", True):
         try:
             from . import table as _tb
         except ImportError:
             import table as _tb  # type: ignore
-        tables = _tb.find_tables(bgr)
+        hs = sorted(_rect(p_)[2] for p_, _ in boxes)
+        tables = _tb.find_tables(bgr, text_h=hs[len(hs) // 2] * 0.75 if hs else 0)
         if tables:
             boxes = _tb.split_boxes(tables, boxes)  # 표 칸 경계를 넘는 글줄은 칸마다 잘라서 읽는다
+        vsegs = _tb.vlines(bgr, text_h=hs[len(hs) // 2] * 0.75 if hs else 0)
+        boxes = _tb.split_by_vlines(vsegs, boxes)  # 닫힌 칸이 아니어도 양식 세로선 양쪽 글은 나눈다
     keep, per = [], [[] for _ in srcs]
     for pts, sc in boxes:
         cs_ = [_crop(s_, pts) for s_ in srcs]
@@ -603,7 +606,7 @@ def read_lines(bgr: np.ndarray, opts: dict | None = None, extra: dict | None = N
                         c["text"] = ""
                 _tb.prune_columns(t)
             items = [it for it in items if "cell" not in it]
-    lines = _group(items, w, h)
+    lines = _group(items, w, h, vsegs)
     if not tables:
         return lines if extra is None else (extra.update(tables=[]) or lines)
     # 표를 위치(위→아래)에 맞춰 줄 사이에 끼워 넣는다. 칸 하나 = 한 줄
@@ -649,7 +652,7 @@ def read_lines(bgr: np.ndarray, opts: dict | None = None, extra: dict | None = N
     return out_lines
 
 
-def _group(items: list[dict], w: int, h: int) -> list[dict]:
+def _group(items: list[dict], w: int, h: int, vsegs: list | None = None) -> list[dict]:
     """글 조각을 읽는 순서대로 줄로 묶는다."""
     if not items:
         return []
@@ -657,11 +660,22 @@ def _group(items: list[dict], w: int, h: int) -> list[dict]:
     def out(group: list[dict], block: int) -> dict:
         P = np.concatenate([g["pts"] for g in group])
         x1, y1, x2, y2 = P[:, 0].min(), P[:, 1].min(), P[:, 0].max(), P[:, 1].max()
-        chk, off = [], 0
-        for g in group:  # 확인이 필요한 숫자 위치 (합친 줄 기준)
-            chk += [off + k for k in g["chk"]]
-            off += len(g["text"]) + 2
-        d = {"text": "  ".join(g["text"] for g in group), "conf": round(min(g["conf"] for g in group) * 100, 1), "block": block,
+        txt, chk = "", []
+        for k, g1 in enumerate(group):  # 사이에 양식 세로선이 있으면 칸 경계 " | "
+            if k:
+                g0, sep = group[k - 1], "  "
+                if vsegs:
+                    try:
+                        from .table import has_vline
+                    except ImportError:
+                        from table import has_vline  # type: ignore
+                    ya, yb = max(g0["box"][1], g1["box"][1]), min(g0["box"][3], g1["box"][3])
+                    if yb > ya and has_vline(vsegs, g0["box"][2] - (g0["box"][3] - g0["box"][1]) * 0.3, g1["box"][0] + (g1["box"][3] - g1["box"][1]) * 0.3, ya, yb):
+                        sep = " | "
+                txt += sep
+            chk += [len(txt) + q for q in g1["chk"]]  # 확인이 필요한 숫자 위치 (합친 줄 기준)
+            txt += g1["text"]
+        d = {"text": txt, "conf": round(min(g["conf"] for g in group) * 100, 1), "block": block,
              "box": [round(float(x1 / w), 5), round(float(y1 / h), 5), round(float((x2 - x1) / w), 5), round(float((y2 - y1) / h), 5)]}
         if chk:
             d["check"] = chk

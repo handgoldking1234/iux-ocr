@@ -285,32 +285,61 @@
   }
 
   /* ---------------- 표 칸 찾기 (app/table.py 와 같은 규칙) ---------------- */
-  function findTables(src) {
+  function grayAt(src) { // 표·선 찾기용 흑백 (작은 이미지는 키우고 큰 이미지는 줄여 같은 기준)
     const W0 = src.width, H0 = src.height;
     let s = Math.min(2200 / Math.max(W0, H0), 2400 / W0, 3); if (Math.abs(s - 1) <= 0.05) s = 1;
     const w = Math.round(W0 * s), h = Math.round(H0 * s), cv = mk(w, h), cx = cv.getContext('2d', { willReadFrequently: true });
     cx.imageSmoothingQuality = 'high'; cx.drawImage(src, 0, 0, w, h);
-    const d = cx.getImageData(0, 0, w, h).data, N = w * h, g = new Uint8Array(N), hist = new Int32Array(256);
-    for (let i = 0; i < N; i++) { const v = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000 | 0; g[i] = v; hist[v]++; }
+    const d = cx.getImageData(0, 0, w, h).data, N = w * h, g = new Uint8Array(N);
+    for (let i = 0; i < N; i++) g[i] = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000 | 0;
+    return { g, w, h, s };
+  }
+  function inkMask(g, w, h) { // 전체 문턱값(그림자 사진이면 버림) + 국소 평균 문턱값
+    const N = w * h, hist = new Int32Array(256); for (let i = 0; i < N; i++) hist[g[i]]++;
     let sumAll = 0; for (let i = 0; i < 256; i++) sumAll += i * hist[i];
     let wB = 0, sB = 0, mxv = -1, thr = 127;
     for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = N - wB; if (!wF) break; sB += t * hist[t]; const mB = sB / wB, mF = (sumAll - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > mxv) { mxv = v; thr = t; } }
-    // 적분 영상으로 국소 평균 (흐린 선·고르지 않은 조명)
     const I = new Float64Array((w + 1) * (h + 1));
     for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += g[y * w + x]; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + row; } }
-    const blk = Math.max(15, Math.floor(Math.min(w, h) / 25) | 1), r = blk >> 1;
-    const b = new Uint8Array(N); let dark = 0;
+    const blk = Math.max(15, Math.floor(Math.min(w, h) / 25) | 1), r = blk >> 1, b = new Uint8Array(N); let dark = 0;
     for (let i = 0; i < N; i++) if (g[i] <= thr) dark++;
     const useO = dark / N <= 0.25;
-    for (let y = 0; y < h; y++) {
-      const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
-      for (let x = 0; x < w; x++) {
-        const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1), cnt = (y1 - y0) * (x1 - x0);
+    for (let y = 0; y < h; y++) { const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+      for (let x = 0; x < w; x++) { const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1), cnt = (y1 - y0) * (x1 - x0);
         const sum = I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0];
-        const v = g[y * w + x]; if (v < sum / cnt - 8 || (useO && v <= thr)) b[y * w + x] = 1;
-      }
+        const v = g[y * w + x]; if (v < sum / cnt - 8 || (useO && v <= thr)) b[y * w + x] = 1; } }
+    return b;
+  }
+  function vlines(src, textH) { // 세로선 조각 [x, y1, y2] — 닫힌 칸이 아니어도 양식 세로선은 글을 나누는 경계
+    const { g, w, h, s } = grayAt(src), b = inkMask(g, w, h), th = textH * s, kv = Math.max(20, Math.floor(th * 2.2)), gapK = Math.max(9, Math.floor(kv / 3));
+    const segs = []; let open = [];
+    for (let x = 0; x < w; x++) {
+      const runs = []; let st = -1;
+      for (let y = 0; y <= h; y++) { const on = y < h && b[y * w + x]; if (on && st < 0) st = y; else if (!on && st >= 0) { if (y - st >= kv) { const last = runs[runs.length - 1]; if (last && st - last[1] < gapK) last[1] = y; else runs.push([st, y]); } st = -1; } }
+      const next = [];
+      for (const [a, c] of runs) { const o = open.find(q => q.x2 === x - 1 && Math.min(c, q.y2) - Math.max(a, q.y1) > 0); if (o) { o.x2 = x; o.y1 = Math.min(o.y1, a); o.y2 = Math.max(o.y2, c); next.push(o); } else { const q = { x1: x, x2: x, y1: a, y2: c }; segs.push(q); next.push(q); } }
+      open = next;
     }
-    const kh = Math.max(20, Math.floor(w / 50)), kv = Math.max(20, Math.floor(Math.min(h, w * 1.6) / 40));
+    return segs.filter(q => q.x2 - q.x1 + 1 <= Math.max(8, th * 0.35)).map(q => [(q.x1 + q.x2 + 1) / 2 / s, q.y1 / s, q.y2 / s]);
+  }
+  function splitByVlines(segs, boxes) { // 세로선이 글줄 상자를 가로지르면 그 자리에서 자른다
+    if (!segs.length) return boxes;
+    const out = [];
+    for (const b of boxes) {
+      const hx = Math.abs(b.ux * b.L / 2) + Math.abs(b.uy * b.S / 2), hy = Math.abs(b.uy * b.L / 2) + Math.abs(b.ux * b.S / 2);
+      const x1 = b.cx - hx, x2 = b.cx + hx, y1 = b.cy - hy, y2 = b.cy + hy, hh = y2 - y1, an = Math.abs(Math.atan2(b.uy, b.ux) * 180 / Math.PI) % 180;
+      if (b.vertical || Math.min(an, 180 - an) >= 4 || x2 - x1 < hh * 1.5) { out.push(b); continue; }
+      const cuts = segs.filter(([x, a, c]) => x1 + hh * 0.5 < x && x < x2 - hh * 0.5 && Math.min(c, y2) - Math.max(a, y1) >= hh * 0.7).map(q => q[0]).sort((a, c) => a - c);
+      if (!cuts.length) { out.push(b); continue; }
+      const xs = [x1, ...cuts, x2];
+      for (let i = 0; i + 1 < xs.length; i++) if (xs[i + 1] - xs[i] >= hh * 0.4) out.push({ cx: (xs[i] + xs[i + 1]) / 2, cy: (y1 + y2) / 2, L: xs[i + 1] - xs[i], S: b.S, ux: 1, uy: 0, vertical: false });
+    }
+    return out;
+  }
+  const hasVline = (segs, xa, xb, ya, yb) => segs.some(([x, a, c]) => xa - 2 <= x && x <= xb + 2 && Math.min(c, yb) - Math.max(a, ya) >= (yb - ya) * 0.6);
+  function findTables(src, textH = 0) {
+    const { g, w, h, s } = grayAt(src), N = w * h, b = inkMask(g, w, h), th = textH * s;
+    const kh = Math.max(20, Math.floor(w / 50), Math.floor(th * 2.5)), kv = Math.max(20, Math.floor(Math.min(h, w * 1.6) / 40), Math.floor(th * 1.8));
     const m = new Uint8Array(N);
     const lineRuns = (len, cnt, at, k, gapK) => { // 한 방향: k 이상 이어진 검은 점만 남기고, gapK 이하 틈은 이음
       for (let a = 0; a < cnt; a++) {
@@ -454,8 +483,11 @@
     let srcs = [src]; const f = enhanceFaint(src); if (f) srcs = [f, src];
     const [dc, ratio] = decolor(srcs[0]); if (ratio > 0.003) srcs = [dc, ...srcs];
     let boxes = await detect(srcs[0]);
-    const tables = findTables(src);
+    const hs = boxes.map(b => b.S).sort((a, c) => a - c), textH = hs.length ? hs[hs.length >> 1] * 0.75 : 0;
+    const tables = findTables(src, textH);
     if (tables.length) boxes = splitBoxes(tables, boxes); // 표 칸 경계를 넘는 글줄은 칸마다 잘라서 읽는다
+    const vsegs = vlines(src, textH);
+    boxes = splitByVlines(vsegs, boxes); // 닫힌 칸이 아니어도 양식 세로선 양쪽 글은 나눈다
     const per = srcs.map(() => []), keep = [];
     for (const b of boxes) { const cs = srcs.map(s => cropBox(s, b)); if (cs[0].width >= 6 && cs[0].height >= 6) { cs.forEach((c, k) => per[k].push(c)); keep.push(b); } }
     let res = keep.length ? await recBest(per[0]) : [];
@@ -474,8 +506,13 @@
       let x1 = 1e9, y1 = 1e9, x2 = -1e9, y2 = -1e9;
       grp.forEach(g => corners(g.b).forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }));
       x1 = Math.max(0, x1); y1 = Math.max(0, y1); x2 = Math.min(w, x2); y2 = Math.min(h, y2);
-      const check = []; let off = 0; grp.forEach(g => { g.chk.forEach(k => check.push(off + k)); off += g.text.length + 2; });
-      const o = { text: grp.map(g => g.text).join('  '), conf: Math.round(Math.min(...grp.map(g => g.conf)) * 1000) / 10, block, box: [x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h] };
+      const check = []; let txt = '';
+      grp.forEach((g, k) => {
+        if (k) { const g0 = grp[k - 1], ya = Math.max(g0.bx[1], g.bx[1]), yb = Math.min(g0.bx[3], g.bx[3]); // 사이에 양식 세로선이 있으면 칸 경계 " | "
+          txt += (out.vsegs && yb > ya && hasVline(out.vsegs, g0.bx[2] - (g0.bx[3] - g0.bx[1]) * 0.3, g.bx[0] + (g.bx[3] - g.bx[1]) * 0.3, ya, yb)) ? ' | ' : '  '; }
+        g.chk.forEach(q => check.push(txt.length + q)); txt += g.text;
+      });
+      const o = { text: txt, conf: Math.round(Math.min(...grp.map(g => g.conf)) * 1000) / 10, block, box: [x1 / w, y1 / h, (x2 - x1) / w, (y2 - y1) / h] };
       if (check.length) o.check = check;
       return o;
     };
@@ -490,6 +527,7 @@
       tables.forEach(t => { t.cells.forEach(c => { if (c.pieces) { const [tx, ch, cf] = joinCell(cellRows(c.pieces)); c.text = tx; c.conf = cf; if (ch.length) c.check = ch; } else c.text = ''; }); pruneColumns(t); });
       rest = items.filter(i => !i.inCell);
     }
+    out.vsegs = vsegs;
     const lines0 = groupLines(rest, w, h, out);
     if (!tables.length) { if (extra) extra.tables = []; return lines0; }
     // 표를 위치(위→아래)에 맞춰 줄 사이에 끼워 넣는다. 칸 하나 = 한 줄
