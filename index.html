@@ -426,7 +426,7 @@ table.ot td.low{background:#fff4e5}
         <div class="btns"><button class="btn" id="addFiles" data-ic="file">파일 추가</button><button class="btn" id="addFolder" data-ic="folder">폴더 추가</button></div>
         <label class="autoconv" title="폴더를 넣으면 파일 목록만 먼저 불러옵니다. '전체 페이지 인식'을 누르면 한 장씩 불러오면서 텍스트로 변환합니다"><input type="checkbox" id="autoConv">폴더는 목록만 먼저 (변환은 버튼으로)</label>
         <div class="upbar" id="upbar" hidden><i></i></div>
-        <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf" hidden>
+        <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf,.iuxocr" hidden>
         <input type="file" id="folder" webkitdirectory directory multiple hidden>
       </div>
       <div class="sec-h"><span>문서 <span id="docCount"></span></span><span class="acts"><button class="btn ghost" id="ocrAllDocs" title="인식 안 한 모든 문서·페이지를 차례로 인식">모두 인식</button><button class="btn ghost" id="delAllDocs" title="작업 목록 비우기">비우기</button></span></div>
@@ -598,7 +598,7 @@ table.ot td.low{background:#fff4e5}
             <div class="seg" id="expSeg"><button data-s="docs" title="목록의 모든 문서(폴더 전체)를 한 파일로">모든 문서 합치기</button><button data-s="all" class="on">이 문서 전체</button><button data-s="page">현재 페이지</button></div>
           </div>
           <div class="fmts" id="fmts"></div>
-          <div class="muted">· <b>모든 문서 합치기</b>: 폴더째 불러온 문서 전부를 문서 이름·쪽 제목을 붙여 한 파일로 저장합니다.<br>· 편집·재가공한 텍스트가 그대로 저장됩니다.<br>· <b>검색 가능한 PDF</b>는 원본 이미지 위에 투명 텍스트를 얹어, 모양은 그대로이고 글자 검색·복사가 됩니다.<br>· <b>Excel</b>에는 줄별 신뢰도(70 미만 주황색)와 공문서 항목 시트가 함께 들어갑니다.<br>· 재가공 탭에서 고른 <b>내 항목 템플릿</b>(<span id="expTpl">없음</span>)이 Excel 첫 시트 '추출 항목'으로 들어갑니다.</div>
+          <div class="muted">· <b>작업 파일(.iuxocr)</b>: 원본 이미지와 인식 결과·고친 글자·표·항목을 그대로 담습니다. <b>파일 추가</b>로 열면(웹·PC 어디서나) 이어서 작업할 수 있습니다. 범위가 '모든 문서 합치기'면 목록 전체를 한 파일로 담습니다.<br>· <b>모든 문서 합치기</b>: 폴더째 불러온 문서 전부를 문서 이름·쪽 제목을 붙여 한 파일로 저장합니다.<br>· 편집·재가공한 텍스트가 그대로 저장됩니다.<br>· <b>검색 가능한 PDF</b>는 원본 이미지 위에 투명 텍스트를 얹어, 모양은 그대로이고 글자 검색·복사가 됩니다.<br>· <b>Excel</b>에는 줄별 신뢰도(70 미만 주황색)와 공문서 항목 시트가 함께 들어갑니다.<br>· 재가공 탭에서 고른 <b>내 항목 템플릿</b>(<span id="expTpl">없음</span>)이 Excel 첫 시트 '추출 항목'으로 들어갑니다.</div>
         </div>
       </div>
     </aside>
@@ -1611,13 +1611,30 @@ function bindSelect(){
 }
 
 /* ---------- 내보내기 ---------- */
-const FMTS=[['txt','TXT','메모장·어디서나','#475467'],['docx','Word','문서 편집용','#2b579a'],['xlsx','Excel','줄별·항목 표','#217346'],['pdf','검색 PDF','원본 모양 + 검색','#d92d20'],['md','Markdown','노션·깃허브','#101828'],['json','JSON','좌표 포함 데이터','#9b51e0']];
+const FMTS=[['iuxocr','작업 파일','인식 상태 그대로 저장 · 다시 열기','#0f766e'],['txt','TXT','메모장·어디서나','#475467'],['docx','Word','문서 편집용','#2b579a'],['xlsx','Excel','줄별·항목 표','#217346'],['pdf','검색 PDF','원본 모양 + 검색','#d92d20'],['md','Markdown','노션·깃허브','#101828'],['json','JSON','좌표 포함 데이터','#9b51e0']];
 function renderExport(){
   $('#fmts').innerHTML=FMTS.map(([k,n,d,c])=>`<button class="fmt" data-f="${k}"><span class="ext" style="background:${c}">.${k}</span><b>${n}</b><small>${d}</small></button>`).join('');
   $$('#fmts .fmt').forEach(b=>b.onclick=()=>doExport(b.dataset.f,b));
 }
 function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
+async function saveProject(btn,all){ // 작업 파일(.iuxocr): 원본 + 인식 결과·고친 글자·표·항목
+  const ids=all?[...S.docs].reverse().map(d=>d.id):(S.doc?[S.doc.id]:[]);
+  if(!ids.length)return toast('문서를 먼저 추가하세요',true);
+  if(btn)btn.disabled=true;
+  try{
+    const r=await api('/api/project/export',{json:{doc_ids:ids},raw:true});
+    const sk=+(r.headers.get('x-skipped-pages')||0);if(sk)toast(`아직 불러오지 않은 ${sk}쪽은 빠졌습니다`,true);
+    const blob=await r.blob();const m=(r.headers.get('content-disposition')||'').match(/filename\*=UTF-8''([^;]+)/);
+    dl(blob,m?decodeURIComponent(m[1]):'IUX작업.iuxocr');toast(`작업 파일로 저장했습니다 (문서 ${ids.length}개) — 파일 추가로 다시 열 수 있습니다`);
+  }catch(e){toast(e.message,true)}finally{if(btn)btn.disabled=false}
+}
+async function openProjects(files){
+  const fd=new FormData();files.forEach(f=>fd.append('files',f));
+  try{const docs=await api('/api/project/import',{method:'POST',body:fd});await loadDocs(docs[0]?.id);toast(`작업 파일을 열었습니다 (문서 ${docs.length}개, 인식 결과 그대로)`)}
+  catch(e){toast(e.message,true)}
+}
 async function doExport(fmt,btn,pageOnly){
+  if(fmt==='iuxocr')return saveProject(btn,S.expScope==='docs');
   if(!S.doc&&S.expScope!=='docs')return toast('문서를 먼저 추가하세요',true);
   if(S.expScope==='docs'&&!S.docs.length)return toast('문서를 먼저 추가하세요',true);
   const pages=pageOnly||S.expScope==='page'?[S.page]:null;
@@ -1637,7 +1654,7 @@ async function doExport(fmt,btn,pageOnly){
 let bTimer=null;const bF=new Set(store.get('batchFmts',['txt','pdf']));
 function openBatch(){
   $('#bIn').value=store.get('bIn','');$('#bOut').value=store.get('bOut','');
-  $('#bFmts').innerHTML=FMTS.map(([k,n])=>`<button class="chip ${bF.has(k)?'on':''}" data-bf="${k}">${n}</button>`).join('');
+  $('#bFmts').innerHTML=FMTS.filter(f=>f[0]!=='iuxocr').map(([k,n])=>`<button class="chip ${bF.has(k)?'on':''}" data-bf="${k}">${n}</button>`).join('');
   $$('[data-bf]').forEach(c=>c.onclick=()=>{bF.has(c.dataset.bf)?bF.delete(c.dataset.bf):bF.add(c.dataset.bf);c.classList.toggle('on');store.set('batchFmts',[...bF])});
   const eng={tesseract:'빠름(Tesseract)',iux:'정확(IUX 엔진)',ollama:'AI('+S.set.vlm+')'}[S.set.engine];
   $('#bEngNote').innerHTML=`엔진·언어·전처리는 오른쪽 패널의 현재 설정(<b>${esc(eng)}</b>)을 따릅니다. 이미 텍스트가 있는 PDF는 OCR 없이 바로 추출합니다. 끝나면 출력 폴더에 <b>처리보고서(CSV)</b>가 생기고, 내 항목 템플릿을 고르면 <b>항목추출 엑셀</b>(파일당 한 줄)도 만들어집니다.`;
@@ -1661,7 +1678,7 @@ const natCmp=(a,b)=>a.localeCompare(b,'ko',{numeric:true,sensitivity:'base'});
 /* items: [{file, path}] — path는 폴더 기준 상대 경로 ('폴더/하위/파일.jpg') */
 function normItems(items){return items.filter(x=>OK_EXT.test(x.file.name)&&!/(^|\/)\./.test(x.path)).sort((a,b)=>natCmp(a.path,b.path))}
 function dirOf(p){const i=p.lastIndexOf('/');return i<0?'':p.slice(0,i)}
-async function upload(files){upload2(normItems([...files].map(f=>({file:f,path:f.webkitRelativePath||f.name}))))}
+async function upload(files){const fs=[...files],pj=fs.filter(f=>/\.iuxocr$/i.test(f.name));if(pj.length)await openProjects(pj);const rest=fs.filter(f=>!/\.iuxocr$/i.test(f.name));if(!rest.length&&pj.length)return;upload2(normItems(rest.map(f=>({file:f,path:f.webkitRelativePath||f.name}))))}
 async function upload2(items,opts={}){
   if(!items.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);
   const hasDirs=items.some(x=>x.path.includes('/'));
@@ -1818,7 +1835,7 @@ function bind(){
   addEventListener('dragenter',e=>{if(e.dataTransfer?.types?.includes('Files')){dc++;$('#dropAll').classList.add('on')}});
   addEventListener('dragleave',()=>{if(--dc<=0){dc=0;$('#dropAll').classList.remove('on')}});
   addEventListener('dragover',e=>e.preventDefault());
-  addEventListener('drop',async e=>{e.preventDefault();dc=0;$('#dropAll').classList.remove('on');const items=normItems(await itemsFromDrop(e.dataTransfer));if(!items.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);upload2(items)});
+  addEventListener('drop',async e=>{e.preventDefault();dc=0;$('#dropAll').classList.remove('on');const pj=[...(e.dataTransfer.files||[])].filter(f=>/\.iuxocr$/i.test(f.name));if(pj.length)await openProjects(pj);const items=normItems(await itemsFromDrop(e.dataTransfer));if(!items.length){if(pj.length)return;return toast('이미지나 PDF 파일만 추가할 수 있습니다',true)}upload2(items)});
   $('#pPrev').onclick=()=>gotoPage(S.page-1);$('#pNext').onclick=()=>gotoPage(S.page+1);
   const rot=async(deg,all)=>{if(!S.doc||S.running)return;const pages=all?S.doc.pages.map((_,i)=>i):[S.page];
     if(pages.some(i=>S.doc.pages[i].result)&&!confirm(`${all?'모든 쪽':'이 페이지'}을 돌리면 인식 결과가 지워집니다. 돌린 뒤 다시 인식하세요. 계속할까요?`))return;

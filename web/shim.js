@@ -506,6 +506,49 @@ function trimEdgeFragments(x, ox, oy, w, h) {
       const docs = await allDocs();
       return docs.map(d => { const f = d.fields || {}; return { id: d.id, name: d.name, created: d.created, pages: d.pages.length, done: d.pages.filter(x => x.result).length, pending: d.pages.filter(x => x.pending).length, checked: !!f.checked, filled: (f.values || []).filter(v => v.value).length }; }).sort((a, b) => b.created - a.created);
     }
+    if (p === '/api/project/export') { // 작업 파일 (.iuxocr): 원본 이미지 + 인식 결과·고친 글자·표·항목
+      const toUrl = b => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+      const out = []; let skipped = 0;
+      for (const id of body.doc_ids) {
+        const d = await getDoc(id); if (!d) continue;
+        const pages = [], files = {};
+        for (const pg of d.pages) {
+          if (pg.pending) { skipped++; continue; }
+          for (const kind of ['image', 'proc', 'thumb']) { const b = await getBlob(`${d.id}/${kind}/${pk(pg)}`); if (b) files[`${kind}/${pk(pg)}`] = await toUrl(b); }
+          const q = { ...pg, key: pk(pg) }; delete q.path; pages.push(q);
+        }
+        pages.forEach((q, i) => { q.index = i; });
+        out.push({ name: d.name, created: d.created, fields: d.fields || null, pages, files });
+      }
+      if (!out.length) fail('저장할 문서가 없습니다.');
+      const name = body.name || (out.length === 1 ? out[0].name : `IUX작업_${out.length}건_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`);
+      const blob = new Blob([JSON.stringify({ format: 'iuxocr', version: 1, app: 'IUX OCR', saved: Date.now() / 1000, docs: out })], { type: 'application/json' });
+      const fname = name.replace(/\.[^.]+$/, '') + '.iuxocr';
+      return new Response(blob, { headers: { 'content-type': 'application/json', 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fname)}`, 'x-skipped-pages': String(skipped) } });
+    }
+    if (p === '/api/project/import') {
+      const made = [];
+      for (const f of opt.body.getAll('files')) {
+        let pj; try { pj = JSON.parse(await f.text()); } catch (e) { fail('작업 파일을 읽을 수 없습니다: ' + f.name); }
+        if (pj.format !== 'iuxocr') fail('IUX OCR 작업 파일이 아닙니다: ' + f.name);
+        for (const src of pj.docs || []) {
+          const id = uid(), pages = [];
+          for (const pg of src.pages || []) {
+            const key = String(pg.key || uid()).replace(/[^A-Za-z0-9_-]/g, '') || uid(), fl = src.files || {};
+            if (!fl['image/' + pg.key]) continue;
+            for (const kind of ['image', 'proc', 'thumb']) { const u = fl[`${kind}/${pg.key}`]; if (u) await setBlob(id, kind, key, await (await fetch(u)).blob()); }
+            if (!fl['thumb/' + pg.key]) await setBlob(id, 'thumb', key, await thumbOf(await blobToCanvas(await getBlob(`${id}/image/${key}`))));
+            const q = { ...pg, key }; delete q.pending; delete q.file; delete q.proc; delete q.thumb; pages.push(q);
+          }
+          if (!pages.length) continue;
+          pages.forEach((q, i) => { q.index = i; });
+          const doc = { id, name: src.name || f.name, created: Date.now() / 1000, pages, ...(src.fields ? { fields: src.fields } : {}) };
+          await putDoc(doc); noteKeys(doc); made.push(doc);
+        }
+      }
+      if (!made.length) fail('작업 파일에 문서가 없습니다.');
+      return made;
+    }
     if (p === '/api/docs/lazy') {
       const id = uid();
       const doc = { id, name: body.name, created: Date.now() / 1000, lazy: true,

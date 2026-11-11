@@ -962,6 +962,107 @@ def api_export(doc_id: str, req: ExportReq):
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"})
 
 
+# ---------------------------------------------------------------- 작업 파일 (.iuxocr): 인식 상태 그대로 저장·다시 열기
+
+PROJ_FMT = "iuxocr"
+_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+
+
+class ProjectExportReq(BaseModel):
+    doc_ids: list[str]
+    name: str | None = None
+
+
+def _data_url(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    import base64
+    return f"data:{_MIME.get(path.suffix.lower(), 'image/png')};base64," + base64.b64encode(path.read_bytes()).decode()
+
+
+@app.post("/api/project/export")
+def api_project_export(req: ProjectExportReq):
+    """문서(원본 이미지 + 인식 결과·고친 글자·표·항목)를 작업 파일 하나로 묶는다. 다른 PC·웹에서 그대로 이어서 작업."""
+    out_docs, skipped = [], 0
+    for did in req.doc_ids:
+        d = load_doc(did)
+        dd = DOCS / did
+        pages, files = [], {}
+        for p in d["pages"]:
+            if p.get("pending"):
+                skipped += 1  # 아직 불러오지 않은 쪽(폴더 원본 경로만 있음)은 담을 수 없음
+                continue
+            key = p.get("key") or uuid.uuid4().hex[:10]
+            for kind, rel in (("image", p.get("file")), ("proc", p.get("proc")), ("thumb", p.get("thumb"))):
+                u = _data_url(dd / rel) if rel else None
+                if u:
+                    files[f"{kind}/{key}"] = u
+            q = {k: v for k, v in p.items() if k not in ("file", "proc", "thumb", "path")}
+            q["key"] = key
+            pages.append(q)
+        for i, q in enumerate(pages):
+            q["index"] = i
+        out_docs.append({"name": d["name"], "created": d.get("created"), "fields": d.get("fields"), "pages": pages, "files": files})
+    if not out_docs:
+        raise HTTPException(400, "저장할 문서가 없습니다.")
+    data = json.dumps({"format": PROJ_FMT, "version": 1, "app": "IUX OCR", "saved": time.time(), "docs": out_docs}, ensure_ascii=False).encode()
+    name = req.name or (out_docs[0]["name"] if len(out_docs) == 1 else f"IUX작업_{len(out_docs)}건_{time.strftime('%Y%m%d')}")
+    fname = Path(name).stem + ".iuxocr"
+    return Response(data, media_type="application/json",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}", "x-skipped-pages": str(skipped)})
+
+
+@app.post("/api/project/import")
+async def api_project_import(files: list[UploadFile] = File(...)):
+    """작업 파일(.iuxocr)을 열어 문서 목록에 새 문서로 추가한다 (기존 문서는 건드리지 않음)."""
+    import base64
+    made = []
+    for f in files:
+        try:
+            pj = json.loads((await f.read()).decode("utf-8"))
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(400, f"작업 파일을 읽을 수 없습니다: {f.filename}") from e
+        if pj.get("format") != PROJ_FMT:
+            raise HTTPException(400, f"IUX OCR 작업 파일이 아닙니다: {f.filename}")
+        for src in pj.get("docs", []):
+            did = uuid.uuid4().hex[:12]
+            dd = DOCS / did
+            (dd / "pages").mkdir(parents=True)
+            (dd / "thumbs").mkdir()
+            pages = []
+            for p in src.get("pages", []):
+                key = re.sub(r"[^A-Za-z0-9_-]", "", str(p.get("key") or "")) or uuid.uuid4().hex[:10]
+                q = dict(p)
+                q["key"] = key
+                for kind, folder, suffix in (("image", "pages", ""), ("proc", "pages", "_proc"), ("thumb", "thumbs", "")):
+                    u = (src.get("files") or {}).get(f"{kind}/{p.get('key')}")
+                    ext = ".png"
+                    if u and u.startswith("data:"):
+                        head, b64 = u.split(",", 1)
+                        ext = {"image/jpeg": ".jpg", "image/webp": ".webp"}.get(head[5:].split(";")[0], ".png")
+                        (dd / folder / f"{key}{suffix}{ext}").write_bytes(base64.b64decode(b64))
+                    q[{"image": "file", "proc": "proc", "thumb": "thumb"}[kind]] = f"{folder}/{key}{suffix}{ext}"
+                if not (dd / q["file"]).exists():
+                    continue
+                if not (dd / q["thumb"]).exists():
+                    _thumb(dd / q["file"], dd / q["thumb"])
+                q.pop("pending", None)
+                pages.append(q)
+            if not pages:
+                shutil.rmtree(dd, ignore_errors=True)
+                continue
+            for i, q in enumerate(pages):
+                q["index"] = i
+            doc = {"id": did, "name": src.get("name") or f.filename, "created": time.time(), "pages": pages}
+            if src.get("fields"):
+                doc["fields"] = src["fields"]
+            save_doc(doc)
+            made.append(doc)
+    if not made:
+        raise HTTPException(400, "작업 파일에 문서가 없습니다.")
+    return made
+
+
 # ---------------------------------------------------------------- 폴더 선택 (윈도우/맥 로컬 대화상자)
 
 @app.post("/api/pick-folder")
