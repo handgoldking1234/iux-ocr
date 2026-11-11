@@ -18,6 +18,7 @@
 ```
 app/server.py       로컬 서버 (API)
 app/engines.py      OCR 엔진 (Tesseract / IUX 엔진 / AI)
+app/table.py        표 칸 찾기(선→칸·병합) · 칸별 글자 정리 — 웹은 web/iux.js findTables 가 같은 규칙
 app/iux_engine.py   IUX 엔진 — 내장 딥러닝(ONNX, CPU·오프라인). 손글씨·흐린 글씨용. 모델은 models/ (PaddleOCR PP-OCRv5 한국어, Apache-2.0)
 app/preprocess.py   전처리 (기울기·이진화)
 app/extract.py      항목 추출  · app/refine.py 재가공 · app/exporters.py 저장(TXT/Word/Excel/PDF)

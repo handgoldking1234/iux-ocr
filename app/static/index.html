@@ -157,7 +157,10 @@ select:focus,input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .prog.show{display:block}
 .prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
 .tabs{display:flex;padding:0 10px;border-bottom:1px solid var(--line);gap:2px}
-.tabs button{height:40px;padding:0 12px;font-weight:700;color:var(--text-3);border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+.tabs button{height:40px;padding:0 10px;font-weight:700;color:var(--text-3);border-bottom:2px solid transparent;display:flex;align-items:center;gap:5px;white-space:nowrap;flex:0 0 auto}
+.tabs{overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
+@media (max-width:1440px){.tabs button{padding:0 8px}.tabs button .i{display:none}}
+@media (max-width:420px){.tabs button{padding:0 7px;font-size:13px}}
 .tabs button.on{color:var(--text);border-color:var(--accent)}
 .tab{flex:1;overflow:auto;min-height:0;display:none}
 .tab.on{display:flex;flex-direction:column}
@@ -240,6 +243,19 @@ table.fields td[contenteditable]{outline:none}
 .fbar .row{flex-wrap:wrap}
 .fstat{font-size:11.5px;color:var(--text-3);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .flist{flex:1;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+.tcnt{margin-left:4px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.tbar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.tbls{flex:1;overflow:auto;padding:12px 14px 20px;display:flex;flex-direction:column;gap:18px}
+.tbls>*,#tab-table{min-width:0;max-width:100%}
+.tblk h5{margin:0 0 6px;font-size:12.5px;display:flex;align-items:center;gap:6px;color:var(--text-2)}
+.tblk h5 .sp{flex:1}
+.twrap{overflow:auto;border:1px solid var(--line);border-radius:8px;max-width:100%}
+table.ot{border-collapse:collapse;font-size:12.5px;min-width:100%}
+table.ot td{border:1px solid var(--line);padding:5px 7px;vertical-align:top;min-width:42px;white-space:pre-wrap;word-break:keep-all;outline:none;cursor:text}
+table.ot td:empty{background:var(--bg-2)}
+table.ot td.on{box-shadow:inset 0 0 0 2px var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+table.ot td.low{background:#fff4e5}
+.tbanner{margin:6px 8px 0;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--accent) 9%,transparent);font-size:12.5px;display:flex;align-items:center;gap:8px}
 .fc{border:1px solid var(--line);border-radius:10px;background:var(--panel);transition:border-color .15s,box-shadow .15s}
 .fc:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-2)}
 .fc.copied{border-color:var(--ok)}
@@ -511,6 +527,7 @@ table.fields td[contenteditable]{outline:none}
 
       <div class="tabs" id="tabs">
         <button data-t="text" class="on" data-ic="text">텍스트</button>
+        <button data-t="table" data-ic="table" id="tabTbl">표<span class="tcnt" id="tblCnt" hidden></span></button>
         <button data-t="fields" data-ic="clipboard">항목</button>
         <button data-t="refine" data-ic="wand">재가공</button>
         <button data-t="export" data-ic="download">내보내기</button>
@@ -519,6 +536,11 @@ table.fields td[contenteditable]{outline:none}
       <div class="tab on" id="tab-text">
         <div class="stats" id="stats"></div>
         <div id="textBody" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+      </div>
+
+      <div class="tab" id="tab-table">
+        <div class="tbar"><span class="muted" id="tblInfo"></span><span style="flex:1"></span><button class="btn sm" id="tblXlsx" data-ic="download" title="이 페이지의 표를 엑셀 파일로 저장 (병합 칸 유지)">엑셀 저장</button></div>
+        <div class="tbls" id="tblBody"></div>
       </div>
 
       <div class="tab" id="tab-fields">
@@ -937,7 +959,7 @@ function selectLine(i,fromBox=false){
 }
 
 /* ---------- 텍스트 탭 ---------- */
-const savePage=debounce(async()=>{const p=curPage();if(!p?.result)return;try{const r=await api(`/api/docs/${S.doc.id}/pages/${S.page}`,{method:'PUT',json:{text:p.result.text,lines:p.result.lines}});}catch(e){toast('저장 실패: '+e.message,true)}},500);
+const savePage=debounce(async()=>{const p=curPage();if(!p?.result)return;try{const r=await api(`/api/docs/${S.doc.id}/pages/${S.page}`,{method:'PUT',json:{text:p.result.text,lines:p.result.lines,...(p.result.tables?{tables:p.result.tables}:{})}});}catch(e){toast('저장 실패: '+e.message,true)}},500);
 function renderStats(){
   const p=curPage(),r=p?.result;
   if(!r){$('#stats').innerHTML='';return}
@@ -977,7 +999,11 @@ function renderText(){
     const lowc=l.conf!=null&&l.conf<LOW;
     h+=`<div class="ln ${lowc?'low':''} ${i===S.sel?'sel':''}" data-i="${i}"><span class="n">${i+1}</span><div class="tx" contenteditable="plaintext-only" spellcheck="false">${markChecks(l)}</div><span class="cf ${l.conf==null?'none':lowc?'low':''} ${l.second?'sec':''}" ${l.second?`title="2차 인식으로 고친 줄 (처음 인식: ${esc(l.text_1st||'')} · 신뢰도 ${Math.round(l.conf_1st||0)})"`:''}>${l.conf==null?'-':Math.round(l.conf)}</span><button class="cp" title="이 줄 복사">${ic('copy')}</button></div>`;
   });
-  h+='</div>';body.innerHTML=h;
+  h+='</div>';
+  const nt=(r.tables||[]).length;
+  if(nt)h=`<div class="tbanner">${ic('table')}<span>표 ${nt}개를 찾아 칸별로 읽었습니다.</span><span style="flex:1"></span><button class="btn sm" id="toTbl">표로 보기</button></div>`+h;
+  body.innerHTML=h;renderTable();
+  $('#toTbl')?.addEventListener('click',()=>$('#tabTbl').click());
   $('#toFull')?.addEventListener('click',()=>{S.editMode='full';renderText()});
   $$('.ln').forEach(el=>{
     const i=+el.dataset.i,tx=el.querySelector('.tx');
@@ -989,8 +1015,52 @@ function renderText(){
   });
 }
 
+/* ---------- 표 ---------- */
+function tableHtml(t,ti){
+  const at={};t.cells.forEach(c=>at[c.r+'-'+c.c]=c);const cover=new Set();
+  t.cells.forEach(c=>{for(let y=c.r;y<c.r+c.rs;y++)for(let x=c.c;x<c.c+c.cs;x++)if(y!==c.r||x!==c.c)cover.add(y+'-'+x)});
+  let h='<table class="ot">';
+  for(let y=0;y<t.rows;y++){h+='<tr>';for(let x=0;x<t.cols;x++){const k=y+'-'+x;if(cover.has(k))continue;const c=at[k];
+    if(!c){h+='<td></td>';continue}
+    const l=c.line!=null?curPage().result.lines[c.line]:null,low=l&&l.conf!=null&&l.conf<LOW;
+    h+=`<td data-t="${ti}" data-k="${k}"${c.rs>1?` rowspan="${c.rs}"`:''}${c.cs>1?` colspan="${c.cs}"`:''} class="${low?'low':''}${c.line!=null&&c.line===S.sel?' on':''}" contenteditable="plaintext-only" spellcheck="false">${esc(c.text||'')}</td>`}
+    h+='</tr>'}
+  return h+'</table>';
+}
+function tableGrid(t){ // 병합 칸은 왼쪽 위 칸에만 글자
+  const g=Array.from({length:t.rows},()=>Array(t.cols).fill(''));t.cells.forEach(c=>{if(g[c.r])g[c.r][c.c]=c.text||''});return g;
+}
+function copyTable(ti){
+  const t=curPage()?.result?.tables?.[ti];if(!t)return;
+  const tsv=tableGrid(t).map(r=>r.map(v=>/[\t\n"]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v).join('\t')).join('\n');
+  const html='<meta charset="utf-8">'+tableHtml(t,ti).replace(/ contenteditable="plaintext-only" spellcheck="false"/g,'').replace(/<td/g,'<td style="border:1px solid #999;vertical-align:top;white-space:pre-wrap"');
+  const msg=`표 ${ti+1}을 복사했습니다 — 엑셀·한글에 붙여넣으면 칸이 그대로 들어갑니다`;
+  if(window.ClipboardItem&&navigator.clipboard?.write)navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([tsv],{type:'text/plain'})})]).then(()=>toast(msg),()=>copyText(tsv,msg));
+  else copyText(tsv,msg);
+}
+function renderTable(){
+  const p=curPage(),r=p?.result,ts=r?.tables||[],body=$('#tblBody');if(!body)return;
+  $('#tblCnt').hidden=!ts.length;$('#tblCnt').textContent=ts.length;$('#tblXlsx').disabled=!ts.length;
+  if(!r){$('#tblInfo').textContent='';body.innerHTML='<div class="placeholder">'+ic('table')+'<br>페이지를 인식하면 표를 칸별로 보여 줍니다.</div>';return}
+  if(!ts.length){$('#tblInfo').textContent='';body.innerHTML=`<div class="placeholder">${ic('table')}<br>이 페이지에서 표를 찾지 못했습니다.<br><span class="muted">${r.engine==='iux'?'선이 흐리거나 끊긴 표는 못 찾을 수 있습니다.':'표 찾기는 <b>정확 · IUX 엔진</b>으로 인식할 때 됩니다.'}</span></div>`;return}
+  $('#tblInfo').textContent=`표 ${ts.length}개 · 칸을 눌러 고치거나, 복사해서 엑셀·한글에 붙여넣으세요`;
+  body.innerHTML=ts.map((t,ti)=>`<div class="tblk"><h5>표 ${ti+1} <span class="muted">${t.rows}행 × ${t.cols}열</span><span class="sp"></span><button class="btn sm" data-tc="${ti}" data-ic="copy">표 복사</button></h5><div class="twrap">${tableHtml(t,ti)}</div></div>`).join('');
+  paintIcons(body);
+  $$('[data-tc]',body).forEach(b=>b.onclick=()=>copyTable(+b.dataset.tc));
+  $$('td[data-k]',body).forEach(td=>{
+    const t=ts[+td.dataset.t],[y,x]=td.dataset.k.split('-').map(Number),c=t.cells.find(c=>c.r===y&&c.c===x);
+    td.onfocus=()=>{$$('td.on',body).forEach(e=>e.classList.remove('on'));td.classList.add('on');if(c.line!=null&&S.sel!==c.line)selectLine(c.line)};
+    td.onmousedown=()=>{if(S.autoCopy&&c.text)setTimeout(()=>{const sl=getSelection();if(!sl||sl.isCollapsed)copyText(c.text,'칸 글자를 복사했습니다')},0)};
+    td.oninput=()=>{c.text=td.innerText.replace(/\n$/,'');
+      if(c.line!=null)setLineText(c.line,t.cells.filter(x=>x.line===c.line&&x.text).sort((a,b)=>a.c-b.c).map(x=>x.text.replace(/\n/g,' ')).join(' | '),'table');else{r.edited=true;savePage()}};
+  });
+}
 function setLineText(i,t,from){
   const r=curPage()?.result;if(!r)return;const diverged=r.text!==linesToText(r.lines);
+  const ti=r.lines[i]?.table;if(ti!=null&&from!=='table'){ // 표 행 줄을 고치면 " | " 로 나눠 칸에도 반영
+    const cs=(r.tables?.[ti]?.cells||[]).filter(c=>c.line===i).sort((a,b)=>a.c-b.c),parts=t.split(/\s*\|\s*/);
+    if(cs.length&&parts.length===cs.length)cs.forEach((c,k)=>{c.text=parts[k];const td=$(`#tblBody td[data-t="${ti}"][data-k="${c.r}-${c.c}"]`);if(td&&document.activeElement!==td)td.textContent=parts[k]});
+  }
   if(r.lines[i].text!==t)delete r.lines[i].check;r.lines[i].text=t;if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage();
   if(from!=='list'){const tx=$(`.ln[data-i="${i}"] .tx`);if(tx&&document.activeElement!==tx)tx.textContent=t}
   const rc=$(`#overlay rect[data-i="${i}"] title`);if(rc)rc.textContent=`${i+1}. ${t}`;
@@ -1544,13 +1614,14 @@ function renderExport(){
   $$('#fmts .fmt').forEach(b=>b.onclick=()=>doExport(b.dataset.f,b));
 }
 function dl(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
-async function doExport(fmt,btn){
+async function doExport(fmt,btn,pageOnly){
   if(!S.doc&&S.expScope!=='docs')return toast('문서를 먼저 추가하세요',true);
   if(S.expScope==='docs'&&!S.docs.length)return toast('문서를 먼저 추가하세요',true);
-  const pages=S.expScope==='page'?[S.page]:null;
+  const pages=pageOnly||S.expScope==='page'?[S.page]:null;
+  if(pageOnly&&!S.doc)return;
   btn.disabled=true;
   try{
-    const r=S.expScope==='docs'
+    const r=S.expScope==='docs'&&!pageOnly
       ?await api('/api/export-all',{json:{format:fmt,doc_ids:[...S.docs].reverse().map(d=>d.id),template_id:S.set.tpl||null,model:S.set.llm||null},raw:true})
       :await api(`/api/docs/${S.doc.id}/export`,{json:{format:fmt,pages,template_id:S.set.tpl||null,model:S.set.llm||null},raw:true});
     const sk=+(r.headers.get('x-skipped-pages')||0);if(sk)toast(`아직 인식 안 된 ${sk}쪽은 빠졌습니다 ('모두 인식' 후 다시 저장하세요)`,true);
@@ -1720,7 +1791,7 @@ function bindResponsive(){
 }
 
 /* ---------- 이벤트 ---------- */
-function renderAll(){renderThumbs();renderViewer();renderText();renderRefine();setRunning(S.running)}
+function renderAll(){$('#tblXlsx')&&($('#tblXlsx').onclick=e=>doExport('xlsx',e.currentTarget,true));renderThumbs();renderViewer();renderText();renderRefine();setRunning(S.running)}
 function bind(){
   paintIcons();
   bindResponsive();
@@ -1773,7 +1844,7 @@ function bind(){
   $('#runPage').onclick=runThisPage;
   $('#runAll').onclick=runAllPages;
   $('#runStop').onclick=()=>{S.stop=true;toast('현재 페이지까지만 처리하고 멈춥니다')};
-  $$('#tabs button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;$$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.t));if(S.tab==='fields')ensureFields()});
+  $$('#tabs button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;$$('#tabs button').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.t));if(S.tab==='fields')ensureFields();if(S.tab==='table')renderTable()});
   $$('#scopeSeg button').forEach(b=>b.onclick=()=>{S.scope=b.dataset.s;$$('#scopeSeg button').forEach(x=>x.classList.toggle('on',x===b))});
   $$('#expSeg button').forEach(b=>b.onclick=()=>{S.expScope=b.dataset.s;$$('#expSeg button').forEach(x=>x.classList.toggle('on',x===b))});
   $$('.tool[data-r]').forEach(b=>b.onclick=()=>runRefine('rule',b.dataset.r));

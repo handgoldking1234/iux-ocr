@@ -217,11 +217,11 @@
 
   /* ---------------- IUX 엔진 (web/iux.js) ---------------- */
   let iuxNote = 0;
-  async function iuxRead(canvasEl) {
+  async function iuxRead(canvasEl, extra) {
     if (!window.IUX) await loadScript('web/iux.js');
     const first = !IUX.loaded();
     if (first && window.toast) toast('손글씨 엔진을 준비하는 중입니다 (처음 한 번, 약 70MB)');
-    return IUX.readLines(canvasEl, f => { const pct = Math.floor(f * 10); if (first && pct > iuxNote && pct < 10 && window.setBusy) { iuxNote = pct; } });
+    return IUX.readLines(canvasEl, f => { const pct = Math.floor(f * 10); if (first && pct > iuxNote && pct < 10 && window.setBusy) { iuxNote = pct; } }, extra);
   }
   /* ---------------- Tesseract.js ---------------- */
   const workers = {};
@@ -313,11 +313,14 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     if (p.pending) throw new Error('아직 불러오지 않은 파일입니다.');
     let src = await blobToCanvas(await getBlob(`${doc.id}/image/${pk(p)}`));
     if (req.engine === 'iux') { // IUX 엔진: 손글씨·흐린 글씨용 딥러닝 (브라우저 안에서 실행)
-      const info0 = { engine_input: 'original' };
-      await setBlob(doc.id, 'proc', pk(p), await toBlob(src, 'image/jpeg', 0.9)); // 원본 그대로 읽으므로 화면 박스가 어긋나지 않게 원본을 저장
-      const lines = await iuxRead(src);
+      const info0 = { engine_input: 'original', skew: 0, rotate: 0 };
+      const pre = req.pre || {};
+      if (pre.orient !== false) { const deg = await detectRotation(src); if (deg) { src = await rotateStored(doc, idx, deg); info0.rotate_fixed = deg; } }
+      if (pre.deskew !== false) { const a = estimateSkew(src); if (Math.abs(a) >= 0.15) { src = rotated(src, -a, '#fff'); info0.skew = a; } } // 기울어진 문서는 바로 세워서 읽는다
+      await setBlob(doc.id, 'proc', pk(p), await toBlob(src, 'image/jpeg', 0.9)); // 읽은 이미지를 그대로 저장해서 화면 박스가 어긋나지 않게
+      const ex = {}, lines = await iuxRead(src, ex);
       const cs = lines.map(l => l.conf);
-      p.result = { engine: 'iux', lines, text: R.linesToText(lines), mean_conf: cs.length ? Math.round(cs.reduce((a, b) => a + b, 0) / cs.length * 10) / 10 : null,
+      p.result = { engine: 'iux', lines, ...(ex.tables && ex.tables.length ? { tables: ex.tables } : {}), text: R.linesToText(lines), mean_conf: cs.length ? Math.round(cs.reduce((a, b) => a + b, 0) / cs.length * 10) / 10 : null,
         time_ms: Math.round(performance.now() - t0), pre: info0, lang: req.lang || 'kor+eng', at: Date.now() / 1000 };
       delete p.pdf_text;
       return p;
@@ -464,6 +467,14 @@ function trimEdgeFragments(x, ox, oy, w, h) {
       if (!window.XLSX) await loadScript(BASE + 'xlsx.full.min.js');
       const wb = XLSX.utils.book_new(), full = pages.map(p => p.result.text).join('\n');
       const tpl = tplById(tid);
+      let tno = 0; // 표: 페이지마다 찾은 표를 시트 하나씩 (병합 칸 유지)
+      pages.forEach(p => (p.result.tables || []).forEach(t => {
+        const g = Array.from({ length: t.rows }, () => Array(t.cols).fill(''));
+        t.cells.forEach(c => { g[c.r][c.c] = c.text || ''; });
+        const ws = XLSX.utils.aoa_to_sheet(g);
+        ws['!merges'] = t.cells.filter(c => c.rs > 1 || c.cs > 1).map(c => ({ s: { r: c.r, c: c.c }, e: { r: c.r + c.rs - 1, c: c.c + c.cs - 1 } }));
+        XLSX.utils.book_append_sheet(wb, ws, `표${++tno} (${lab(p)})`.slice(0, 31));
+      }));
       if (tpl) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['항목', '값'], ...valuesFor(tpl, full).map(v => [v.name, v.value])]), '추출 항목');
       const rows = [['페이지', '줄', '텍스트', '신뢰도', '엔진', 'x', 'y', 'w', 'h']];
       pages.forEach(p => effectiveLines(p.result).forEach((l, j) => rows.push([lab(p), j + 1, l.text, l.conf, p.result.engine, ...(l.box || [null, null, null, null]).map(v => v == null ? null : Math.round(v * 1e4) / 1e4)])));
@@ -574,7 +585,7 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/pages\/(\d+)$/))) {
       const d = await getDoc(m[1]), pg = d.pages[+m[2]];
       const r = pg.result || { engine: 'manual', lines: [], mean_conf: null };
-      r.text = body.text; if (body.lines) r.lines = body.lines; r.edited = true; pg.result = r; await putDoc(d); return pg;
+      r.text = body.text; if (body.lines) r.lines = body.lines; if (body.tables) r.tables = body.tables; r.edited = true; pg.result = r; await putDoc(d); return pg;
     }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/fields$/))) {
       const d = await getDoc(m[1]); d.fields = { ...body, at: Date.now() / 1000 }; await putDoc(d); return d.fields;

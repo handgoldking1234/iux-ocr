@@ -81,7 +81,7 @@ def _by_label(lines: list[str], labels: list[str], stops: list[str], multi: bool
     alt = "|".join(_label_rx(l) for l in labels if l.strip())
     if not alt:
         return []
-    rx = re.compile(r"(?:^|[\s(\[○□\-·])(?:" + alt + r")\s*(?:[:：]|은|는)?\s*(.*)$")
+    rx = re.compile(r"(?:^|[\s(\[○□\-·|])(?:" + alt + r")\s*(?:[:：|]|은|는)?\s*([^|]*)")  # 표 행(칸 | 칸)은 칸 경계까지만
     stop_rx = re.compile(r"\s(?:" + "|".join(_label_rx(s) for s in stops) + r")\s*[:：]?\s") if stops else None
     out = []
     for i, l in enumerate(lines):
@@ -262,6 +262,12 @@ def _clean_val(v: str) -> str:
     return v.strip()
 
 
+def _is_label(c: str) -> bool:
+    """표 칸 글이 이름표처럼 보이는지 (짧은 한글·영문, 숫자 없음)"""
+    t = re.sub(r"[\s()（）]", "", c)
+    return bool(re.fullmatch(r"[가-힣A-Za-z·/]{1,12}", t)) and not re.search(r"\d", c)
+
+
 def auto_fields(text: str) -> list[dict]:
     """문서 속 '수신 ○○', '제 목 ○○', '참조 : ○○' 같은 이름표와 값을 찾아 항목으로 만든다."""
     lines = refine.normalize(text).split("\n")
@@ -278,7 +284,28 @@ def auto_fields(text: str) -> list[dict]:
         seen[name] = seen.get(name, 0) + 1
         out.append({"name": f"{name} {seen[name]}" if seen[name] > 1 else name, "value": value})
 
+    head: list[str] | None = None
     for line in lines:
+        if " | " in line:  # 표 행: 이름 칸 | 값 칸 짝, 또는 머리 행 아래 값 행
+            cells = [c.strip() for c in line.split(" | ")]
+            labs = [_is_label(c) for c in cells]
+            if all(labs) and len(cells) >= 2:
+                head = cells
+                continue
+            if head and len(cells) == len(head):
+                for h_, v in zip(head, cells):
+                    add(h_, v)
+                continue
+            head = None
+            k = 0
+            while k < len(cells) - 1:
+                if labs[k] and not labs[k + 1]:
+                    add(cells[k], cells[k + 1])
+                    k += 2
+                else:
+                    k += 1
+            continue
+        head = None
         ms = list(_RX_STRONG.finditer(line))
         if ms and ms[0].start() == 0:
             segs = [(m.group(2), m.start() + len(m.group(1)), m.end()) for m in ms]

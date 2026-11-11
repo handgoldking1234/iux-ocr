@@ -130,6 +130,26 @@ def to_xlsx(doc: dict, pages: list[dict], tpl: dict | None = None, model: str | 
         wsx.column_dimensions["B"].width = 90
         wb.active = 0
 
+    # 표: 페이지마다 찾은 표를 시트 하나씩 (병합 칸·테두리 유지)
+    from openpyxl.styles import Border, Side
+    thin = Side(style="thin", color="999999")
+    tno = 0
+    for p in pages:
+        for ti, t in enumerate((p.get("result") or {}).get("tables") or []):
+            tno += 1
+            wt = wb.create_sheet(f"표{tno} ({_label(p)})"[:31], tno - 1)
+            for c in t["cells"]:
+                cell = wt.cell(c["r"] + 1, c["c"] + 1, c.get("text") or None)
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+                for y in range(c["r"], c["r"] + c["rs"]):
+                    for x in range(c["c"], c["c"] + c["cs"]):
+                        wt.cell(y + 1, x + 1).border = Border(left=thin, right=thin, top=thin, bottom=thin)
+                if c["rs"] > 1 or c["cs"] > 1:
+                    wt.merge_cells(start_row=c["r"] + 1, start_column=c["c"] + 1, end_row=c["r"] + c["rs"], end_column=c["c"] + c["cs"])
+            wt._iux_table = True
+    if tno:
+        wb.active = 0
+
     ws3 = wb.create_sheet("페이지 전체")
     ws3.append(["페이지", "텍스트", "평균 신뢰도", "엔진"])
     for p in pages:
@@ -139,6 +159,8 @@ def to_xlsx(doc: dict, pages: list[dict], tpl: dict | None = None, model: str | 
     ws3.column_dimensions["B"].width = 100
 
     for sh in wb.worksheets:
+        if getattr(sh, "_iux_table", False):
+            continue
         for c in sh[1]:
             c.fill, c.font = head_fill, head_font
         sh.freeze_panes = "A2"

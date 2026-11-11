@@ -217,6 +217,8 @@ def ocr_page(doc: dict, idx: int, engine: str, lang: str, psm: int, model: str |
         rotate_page(doc, idx, info["rotate"])
         color = preprocess.load_bgr(str(d / p["file"]))
         info["rotate_fixed"] = info.pop("rotate")
+    if engine == "iux" and info.get("skew"):  # 기울어진 문서: 원본 색 이미지도 같은 각도로 바로 세워서 읽는다 (표 선·글줄이 수평이 되게)
+        color = preprocess._rotate(color, info["skew"])
     # IUX 엔진은 원본을 그대로 읽으므로, 화면 박스가 어긋나지 않게 전처리 보기에도 원본(흑백)을 둔다
     preprocess.save_png(str(d / p["proc"]), cv2.cvtColor(color, cv2.COLOR_BGR2GRAY) if engine == "iux" and color.ndim == 3 else gray)
     res = engines.run_engine(engine, gray, color, lang, psm, model, fix_spacing)
@@ -271,6 +273,7 @@ class AutofillReq(BaseModel):
 class PageUpdate(BaseModel):
     text: str
     lines: list[dict] | None = None
+    tables: list[dict] | None = None
 
 
 class RefineReq(BaseModel):
@@ -760,6 +763,8 @@ def api_page_update(doc_id: str, idx: int, upd: PageUpdate):
         r["text"] = upd.text
         if upd.lines is not None:
             r["lines"] = upd.lines
+        if upd.tables is not None:
+            r["tables"] = upd.tables
         r["edited"] = True
         p["result"] = r
         save_doc(doc)

@@ -262,13 +262,15 @@ def _respace(crop: np.ndarray, chars: list[str], xs: list[float], probs: list[fl
         for k in range(max(1, len(ws) // 3), len(ws)):
             if ws[k] >= th * 0.18 and ws[k - 1] > 0 and ws[k] / ws[k - 1] > best:
                 best, cut = ws[k] / ws[k - 1], (ws[k] + ws[k - 1]) / 2
-        lim = cut if cut is not None and best >= 1.45 else max(lim, ws[len(ws) // 2] * 1.7)
+        lim = max(cut, th * 0.3) if cut is not None and best >= 1.45 else max(lim, ws[len(ws) // 2] * 1.7)
     gaps = [(a, b) for a, b in inner if (b - a) >= lim]
     if not gaps:
         return chars, probs
     out, pr = [chars[0]], [probs[0]]
     for j in range(1, len(chars)):
-        if chars[j] != " " and out[-1] != " ":
+        a_, b_ = out[-1], chars[j]
+        num = (a_.isdigit() or a_ == ",") and (b_.isdigit() or b_ in ",.")  # 1,100 · 2030.10 처럼 숫자 안에는 띄우지 않음
+        if b_ != " " and a_ != " " and not num:
             x0, x1 = xs[j - 1] * w, xs[j] * w
             if any(x0 < (a + b) / 2 < x1 for a, b in gaps):
                 out.append(" ")
@@ -528,10 +530,11 @@ def _hanja_line(crop: np.ndarray, cur: tuple, z: tuple) -> tuple | None:
     return ("".join(chars), float(np.mean(real)) if real else 0.0, ps)
 
 
-def read_lines(bgr: np.ndarray, opts: dict | None = None) -> list[dict]:
+def read_lines(bgr: np.ndarray, opts: dict | None = None, extra: dict | None = None) -> list[dict]:
     """이미지 전체에서 글줄을 찾아 읽고, 읽는 순서대로 정리해 돌려준다.
     비스듬히 찍은 사진(기울어진 글줄)과 세로쓰기(오른쪽 줄부터)도 순서를 맞춘다.
-    opts: decolor(색 도장 지우기), faint(흐린 글씨 진하게), hanja(한자 읽기) — 모두 기본 켬"""
+    opts: decolor(색 도장 지우기), faint(흐린 글씨 진하게), hanja(한자 읽기), table(표 칸별 읽기) — 모두 기본 켬
+    extra 에 dict 를 주면 extra['tables'] 에 표(행·열·칸) 정보를 담는다."""
     _load()
     o = {"decolor": True, "faint": True, "hanja": True, **(opts or {})}
     if bgr.ndim == 2:
@@ -547,6 +550,15 @@ def read_lines(bgr: np.ndarray, opts: dict | None = None) -> list[dict]:
         if ratio > 0.003:
             srcs = [d] + srcs  # 도장 지운 이미지로 글줄을 찾고, 줄마다 원본과 비교해 나은 쪽을 쓴다
     boxes = _det(srcs[0])
+    tables = []
+    if o.get("table", True):
+        try:
+            from . import table as _tb
+        except ImportError:
+            import table as _tb  # type: ignore
+        tables = _tb.find_tables(bgr)
+        if tables:
+            boxes = _tb.split_boxes(tables, boxes)  # 표 칸 경계를 넘는 글줄은 칸마다 잘라서 읽는다
     keep, per = [], [[] for _ in srcs]
     for pts, sc in boxes:
         cs_ = [_crop(s_, pts) for s_ in srcs]
@@ -573,7 +585,72 @@ def read_lines(bgr: np.ndarray, opts: dict | None = None) -> list[dict]:
             continue  # 짧거나 한글 없는 저신뢰 조각
         c, L, S, ang = _rect(pts)
         chk = [k for k, (ch, p) in enumerate(zip(t, pr)) if ch.isdigit() and p < CHECK_P]
-        items.append({"pts": pts, "text": t, "conf": cf, "c": c, "L": L, "S": S, "ang": ang, "chk": chk})
+        items.append({"pts": pts, "text": t, "conf": cf, "c": c, "L": L, "S": S, "ang": ang, "chk": chk,
+                      "box": [float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())]})
+    if tables:
+        if True:
+            _tb.assign(tables, items)
+            for it in items:
+                if "cell" in it:
+                    tables[it["cell"][0]]["cells"][it["cell"][1]].setdefault("pieces", []).append(it)
+            for t in tables:
+                for c in t["cells"]:
+                    if c.get("pieces"):
+                        c["text"], ch, c["conf"] = _tb._join(_tb.cell_text(c["pieces"]))
+                        if ch:
+                            c["check"] = ch
+                    else:
+                        c["text"] = ""
+                _tb.prune_columns(t)
+            items = [it for it in items if "cell" not in it]
+    lines = _group(items, w, h)
+    if not tables:
+        return lines if extra is None else (extra.update(tables=[]) or lines)
+    # 표를 위치(위→아래)에 맞춰 줄 사이에 끼워 넣는다. 칸 하나 = 한 줄
+    units = [("l", l["box"][1] * h, l) for l in lines] + [("t", t["box"][1], t) for t in tables]
+    units.sort(key=lambda u: u[1])
+    out_lines, out_tables, block, prev = [], [], -1, None
+    nb = lambda x: [round(float(x[0] / w), 5), round(float(x[1] / h), 5), round(float((x[2] - x[0]) / w), 5), round(float((x[3] - x[1]) / h), 5)]
+    for kind, _, u in units:
+        if kind == "l":
+            if prev != ("l", u["block"]):
+                block += 1
+            prev = ("l", u["block"])
+            u["block"] = block
+            out_lines.append(u)
+            continue
+        block += 1
+        prev = ("t", id(u))
+        ti = len(out_tables)
+        cells = []
+        rows_: dict[int, list] = {}
+        for c in sorted(u["cells"], key=lambda c: (c["r"], c["c"])):
+            cd = {"r": c["r"], "c": c["c"], "rs": c["rs"], "cs": c["cs"], "box": nb(c["box"]), "text": c["text"]}
+            cells.append(cd)
+            if c["text"]:
+                rows_.setdefault(c["r"], []).append((c, cd))
+        for r_, grp in sorted(rows_.items()):  # 표의 한 행 = 한 줄, 칸 사이는 " | "
+            P = np.concatenate([p["pts"] for c, _ in grp for p in c["pieces"]])
+            txt, chk, off = "", [], 0
+            for k, (c, cd) in enumerate(grp):
+                if k:
+                    txt += " | "
+                chk += [len(txt) + q for q in c.get("check", [])]
+                txt += c["text"].replace("\n", " ")
+                cd["line"] = len(out_lines)
+            ln = {"text": txt, "conf": round(min(c["conf"] for c, _ in grp) * 100, 1), "block": block,
+                  "box": nb([P[:, 0].min(), P[:, 1].min(), P[:, 0].max(), P[:, 1].max()]), "table": ti, "row": r_}
+            if chk:
+                ln["check"] = chk
+            out_lines.append(ln)
+        out_tables.append({"box": nb(u["box"]), "rows": u["rows"], "cols": u["cols"], "cells": cells})
+    if extra is not None:
+        extra["tables"] = out_tables
+    return out_lines
+
+
+def _group(items: list[dict], w: int, h: int) -> list[dict]:
+    """글 조각을 읽는 순서대로 줄로 묶는다."""
     if not items:
         return []
 

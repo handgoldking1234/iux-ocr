@@ -461,7 +461,11 @@ def run_iux(gray: np.ndarray, color: np.ndarray | None = None, lang: str = "kor+
     from . import iux_engine
     img = color if color is not None and color.size else gray
     # 색 도장 지우기·흐린 글씨 진하게·한자 읽기 모두 켬 (한글 문서 정확도에 영향 없음을 확인)
-    return _finish("iux", iux_engine.read_lines(img))
+    ex: dict = {}
+    res = _finish("iux", iux_engine.read_lines(img, extra=ex))
+    if ex.get("tables"):
+        res["tables"] = ex["tables"]  # 표 칸 구조 (행·열·병합·칸 글자)
+    return res
 
 
 def iux_info() -> dict:

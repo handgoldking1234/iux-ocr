@@ -249,7 +249,7 @@
   function byLabel(lines, labels, stops, multi) {
     const alt = labels.filter(l => l.trim()).map(labelRx).join('|');
     if (!alt) return [];
-    const rx = new RegExp('(?:^|[\\s(\\[○□\\-·])(?:' + alt + ')\\s*(?:[:：]|은|는)?\\s*(.*)$');
+    const rx = new RegExp('(?:^|[\\s(\\[○□\\-·|])(?:' + alt + ')\\s*(?:[:：|]|은|는)?\\s*([^|]*)'); // 표 행(칸 | 칸)은 칸 경계까지만
     const stopRx = stops.length ? new RegExp('\\s(?:' + stops.map(labelRx).join('|') + ')\\s*[:：]?\\s') : null;
     const out = [];
     for (let i = 0; i < lines.length; i++) {
@@ -373,7 +373,18 @@
       seen[name] = (seen[name] || 0) + 1;
       out.push({ name: seen[name] > 1 ? `${name} ${seen[name]}` : name, value });
     };
+    const isLabel = c => /^[가-힣A-Za-z·/]{1,12}$/.test(c.replace(/[\s()（）]/g, '')) && !/\d/.test(c);
+    let head = null;
     for (const line of lines) {
+      if (line.includes(' | ')) { // 표 행: 이름 칸 | 값 칸 짝, 또는 머리 행 아래 값 행
+        const cells = line.split(' | ').map(c => c.trim()), labs = cells.map(isLabel);
+        if (labs.every(Boolean) && cells.length >= 2) { head = cells; continue; }
+        if (head && cells.length === head.length) { head.forEach((h, k) => add(h, cells[k])); continue; }
+        head = null;
+        for (let k = 0; k < cells.length - 1;) { if (labs[k] && !labs[k + 1]) { add(cells[k], cells[k + 1]); k += 2; } else k++; }
+        continue;
+      }
+      head = null;
       const ms = [...line.matchAll(RX_STRONG)];
       if (ms.length && ms[0].index === 0) {
         const segs = ms.map(m => ({ label: m[2], start: m.index + m[1].length, end: m.index + m[0].length }));
