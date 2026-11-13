@@ -100,9 +100,20 @@ aside.left{background:var(--panel);border-right:1px solid var(--line);display:fl
 .th .st.run{background:var(--accent)}
 .empty-side{padding:24px 16px;color:var(--text-3);font-size:12px;text-align:center;line-height:1.6}
 /* 패널 접기 */
-body.hl main{--lw:0px}body.hl aside.left{display:none}
-body.hr main{--rw:0px}body.hr aside.right{display:none}
+body.hl main{--lw:0px}body.hl aside.left{visibility:hidden;overflow:hidden;border:0;min-width:0}
+body.hr main{--rw:0px}body.hr aside.right{visibility:hidden;overflow:hidden;border:0;min-width:0}
+aside.left,aside.right{min-width:0}
+@media (max-width:1100px){body.hl aside.left{visibility:visible;overflow:visible}}
+@media (max-width:760px){body.hr aside.right{visibility:visible;overflow:visible}body.hr main{--rw:auto}}
 .vbar .tgl.on{color:var(--accent);background:var(--accent-2)}
+section.center{position:relative}
+.edge{position:absolute;top:50%;transform:translateY(-50%);z-index:8;width:16px;height:64px;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line-2);color:var(--text-2);box-shadow:var(--shadow);opacity:.85;transition:.15s}
+.edge:hover{opacity:1;color:var(--accent);width:20px}
+.edge svg{width:14px;height:14px}
+.edge.eL{left:0;border-left:0;border-radius:0 8px 8px 0}
+.edge.eR{right:0;border-right:0;border-radius:8px 0 0 8px}
+@media (max-width:1100px){.edge.eL{display:none}}
+@media (max-width:760px){.edge{display:none}.tglR{display:none!important}}
 /* 문서 목록 보기 방식: 목록 · 아이콘 · 폴더 */
 .dvseg{display:flex;gap:1px;margin-right:4px}
 .sec-h{white-space:nowrap;gap:6px}.sec-h>span:first-child{overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -495,6 +506,7 @@ table.ot td.low{background:#fff4e5}
     <section class="center">
       <div class="vbar">
         <button class="btn icon sm ghost tgl tglL" id="tglL" title="왼쪽 패널 접기/펴기 ( [ )"></button>
+        <button class="btn icon sm ghost tgl tglR" id="tglR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
         <div class="seg" id="cvSeg"><button data-cv="viewer" title="한 장 크게 보기 (더블클릭)"></button><button data-cv="grid" title="썸네일로 모아 보기 (G)"></button></div>
         <span class="gsize" id="gSizeBox" hidden title="썸네일 크기"><svg class="i" viewBox="0 0 24 24"><rect width="7" height="7" x="8.5" y="8.5" rx="1"/></svg><input type="range" id="gSize" min="90" max="420" step="10"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect width="16" height="16" x="4" y="4" rx="2"/></svg></span>
         <span class="sep"></span>
@@ -518,8 +530,6 @@ table.ot td.low{background:#fff4e5}
         <div class="seg" id="toolSeg"><button data-tool="select" title="드래그해서 영역의 글자 선택·복사 (Space를 누른 채 드래그하면 이동)"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>선택</button><button data-tool="pan" title="드래그로 화면 이동"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/></svg>이동</button></div>
         <div class="seg"><button id="boxToggle" class="on"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>박스</button></div>
         <span class="name" id="vName"></span>
-        <span style="flex:1"></span>
-        <button class="btn icon sm ghost tgl" id="tglR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
       </div>
       <div class="viewer" id="viewer">
         <div class="pend" id="pendView" hidden></div>
@@ -543,6 +553,8 @@ table.ot td.low{background:#fff4e5}
         </div>
         <div class="selpop" id="selPop" hidden></div>
       </div>
+      <button class="edge eL" id="edgeL" title="왼쪽 패널 접기/펴기 ( [ )"></button>
+      <button class="edge eR" id="edgeR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
     </section>
 
     <aside class="right">
@@ -839,7 +851,7 @@ const IC={
  undo:'<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
  eye:'<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
 };
-Object.assign(IC,{grid:'<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',list:'<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',panelL:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',panelR:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',chevD:'<path d="m6 9 6 6 6-6"/>',chevR:'<path d="m9 18 6-6-6-6"/>',viewer:'<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'});
+Object.assign(IC,{grid:'<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',list:'<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',panelL:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',panelR:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/>',chevD:'<path d="m6 9 6 6 6-6"/>',chevR:'<path d="m9 18 6-6-6-6"/>',chevL:'<path d="m15 18-6-6 6-6"/>',viewer:'<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'});
 const ic=(n,cls='')=>`<svg class="i ${cls}" viewBox="0 0 24 24">${IC[n]||''}</svg>`;
 function paintIcons(root=document){root.querySelectorAll('[data-ic]').forEach(el=>{if(el.dataset.icDone)return;el.insertAdjacentHTML('afterbegin',ic(el.dataset.ic));el.dataset.icDone=1});}
 
@@ -997,7 +1009,7 @@ function renderGrid(){
     el.ondblclick=()=>setCv('viewer')});
   $('#pgrid .gi.on')?.scrollIntoView({block:'nearest'});
 }
-function setPanels(){document.body.classList.toggle('hl',S.hl);document.body.classList.toggle('hr',S.hr);$('#tglL').classList.toggle('on',!S.hl);$('#tglR').classList.toggle('on',!S.hr);store.set('panels',{hl:S.hl,hr:S.hr});setTimeout(()=>{if(S.cv!=='grid')renderViewer()},200)}
+function setPanels(){$('#edgeL').innerHTML=ic(S.hl?'chevR':'chevL');$('#edgeR').innerHTML=ic(S.hr?'chevL':'chevR');document.body.classList.toggle('hl',S.hl);document.body.classList.toggle('hr',S.hr);$('#tglL').classList.toggle('on',!S.hl);$('#tglR').classList.toggle('on',!S.hr);store.set('panels',{hl:S.hl,hr:S.hr});setTimeout(()=>{if(S.cv!=='grid')renderViewer()},200)}
 async function openDoc(id,page=0,fromHelper=false){
   S.doc=await api('/api/docs/'+id);S.page=Math.min(page,S.doc.pages.length-1);S.sel=-1;S.rf=null;S.copied=new Set();
   if(!fromHelper)syncSelect();
@@ -1850,7 +1862,7 @@ async function upload2(items,opts={}){
     }
     await loadDocs(ids[0]);
     if(opts.ocr&&ids.length){toast(`파일 ${items.length}개 목록을 불러왔습니다 — 한 장씩 불러오며 변환합니다`);processDocs(ids)}
-    else toast(`파일 ${items.length}개 목록을 불러왔습니다 (문서 ${ids.length}개) — '전체 페이지 인식'을 누르면 한 장씩 변환합니다${ids.length>1?" (모든 문서는 '모두 인식')":''}`);
+    else toast(`파일 ${items.length}개 목록을 불러왔습니다 (문서 ${ids.length}개) — 쪽을 골라 '이 페이지 인식', 또는 '전체 페이지 인식'`);
     return;
   }
   const bar=$('#upbar');bar.hidden=false;const total=items.length;let done=0;const ids=[];
@@ -1971,7 +1983,7 @@ function bind(){
   paintIcons();
   $('#tglL').innerHTML=ic('panelL');$('#tglR').innerHTML=ic('panelR');
   $$('#cvSeg button').forEach(b=>b.innerHTML=b.dataset.cv==='grid'?ic('grid')+'<span>썸네일</span>':ic('viewer')+'<span>뷰어</span>');
-  $('#tglL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
+  $('#tglL').onclick=$('#edgeL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=$('#edgeR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
   $$('#cvSeg button').forEach(b=>b.onclick=()=>setCv(b.dataset.cv));
   const gs=$('#gSize');gs.value=S.gs;gs.oninput=()=>{S.gs=+gs.value;store.set('gs',S.gs);$('#pgrid').style.setProperty('--gs',S.gs+'px')};gs.onchange=()=>renderGrid();
   $$('#dvSeg button').forEach(b=>b.onclick=()=>{S.dv=b.dataset.dv;store.set('dv',S.dv);renderDocList()});
