@@ -504,7 +504,7 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     };
     if (p === '/api/docs' && method === 'GET') {
       const docs = await allDocs();
-      return docs.map(d => { const f = d.fields || {}; return { id: d.id, name: d.name, created: d.created, pages: d.pages.length, done: d.pages.filter(x => x.result).length, pending: d.pages.filter(x => x.pending).length, checked: !!f.checked, filled: (f.values || []).filter(v => v.value).length }; }).sort((a, b) => b.created - a.created);
+      return docs.map(d => { const f = d.fields || {}; return { id: d.id, name: d.name, created: d.created, pages: d.pages.length, done: d.pages.filter(x => x.result).length, pending: d.pages.filter(x => x.pending).length, folder: d.folder || '', checked: !!f.checked, filled: (f.values || []).filter(v => v.value).length }; }).sort((a, b) => b.created - a.created);
     }
     if (p === '/api/project/export') { // 작업 파일 (.iuxocr): 원본 이미지 + 인식 결과·고친 글자·표·항목
       const toUrl = b => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
@@ -551,7 +551,7 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     }
     if (p === '/api/docs/lazy') {
       const id = uid();
-      const doc = { id, name: body.name, created: Date.now() / 1000, lazy: true,
+      const doc = { id, name: body.name, folder: body.folder || '', created: Date.now() / 1000, lazy: true,
         pages: body.files.map((f, i) => ({ index: i, key: uid(), pending: true, path: f, source: f.split('/').pop(), result: null })) };
       await putDoc(doc); noteKeys(doc); return doc;
     }
@@ -571,7 +571,7 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     if (p === '/api/upload') {
       const files = opt.body.getAll('files'), out = [];
       if (opt.body.get('append_to') && files.length) { const ex = await getDoc(opt.body.get('append_to')); out.push(await ingestMany(files, '', ex)); await loadUrls(ex); return out; }
-      if (opt.body.get('merge') === '1' && files.length) { out.push(await ingestMany(files, opt.body.get('doc_name') || files[0].name)); return out; }
+      if (opt.body.get('merge') === '1' && files.length) { const d = await ingestMany(files, opt.body.get('doc_name') || files[0].name); if (opt.body.get('folder')) { const dd = await getDoc(d.id); dd.folder = opt.body.get('folder'); await putDoc(dd); d.folder = dd.folder; } out.push(d); return out; }
       for (const f of files) out.push(await ingest(f));
       return out;
     }

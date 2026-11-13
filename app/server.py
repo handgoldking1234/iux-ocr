@@ -362,7 +362,8 @@ def api_docs():
             pend = sum(1 for p in d["pages"] if p.get("pending"))
             f = d.get("fields") or {}
             out.append({"id": d["id"], "name": d["name"], "created": d["created"], "pages": len(d["pages"]), "done": done,
-                        "checked": bool(f.get("checked")), "filled": sum(1 for v in f.get("values", []) if v.get("value")), "pending": pend})
+                        "checked": bool(f.get("checked")), "filled": sum(1 for v in f.get("values", []) if v.get("value")), "pending": pend,
+                        "folder": d.get("folder") or ""})
         except Exception:  # noqa: BLE001
             continue
     return sorted(out, key=lambda x: -x["created"])
@@ -394,7 +395,7 @@ def _sniff_ext(path: Path) -> str | None:
 
 
 @app.post("/api/upload")
-async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""), doc_name: str = Form(""), append_to: str = Form("")):
+async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""), doc_name: str = Form(""), append_to: str = Form(""), folder: str = Form("")):
     """merge=1 이면 받은 파일 전체를 한 문서(여러 쪽)로, append_to=문서ID 면 그 문서 뒤에 쪽 추가, 아니면 파일마다 문서."""
     tmp = WS / "tmp"
     tmp.mkdir(exist_ok=True)
@@ -418,7 +419,11 @@ async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""),
             with _lock:
                 docs.append(ingest_files(staged, "", load_doc(append_to)))
         elif merge in ("1", "true") and staged:
-            docs.append(ingest_files(staged, doc_name or staged[0][1]))
+            d_ = ingest_files(staged, doc_name or staged[0][1])
+            if folder:  # 폴더로 넣은 문서: 탐색기 보기에서 폴더 구조로 묶음
+                d_["folder"] = folder
+                save_doc(d_)
+            docs.append(d_)
         else:
             for t, name in staged:
                 docs.append(ingest_file(t, name))
@@ -431,6 +436,7 @@ async def api_upload(files: list[UploadFile] = File(...), merge: str = Form(""),
 class LazyDocReq(BaseModel):
     name: str
     files: list[str]  # 폴더 안 상대 경로 (정렬된 순서)
+    folder: str = ""  # 폴더 상대 경로 (탐색기 보기용)
 
 
 @app.post("/api/docs/lazy")
@@ -442,7 +448,7 @@ def api_docs_lazy(req: LazyDocReq):
     (d / "thumbs").mkdir()
     pages = [{"index": i, "key": uuid.uuid4().hex[:10], "pending": True, "path": f, "source": Path(f).name, "result": None}
              for i, f in enumerate(req.files)]
-    doc = {"id": doc_id, "name": req.name, "created": time.time(), "pages": pages, "lazy": True}
+    doc = {"id": doc_id, "name": req.name, "created": time.time(), "pages": pages, "lazy": True, "folder": req.folder}
     save_doc(doc)
     return doc
 
