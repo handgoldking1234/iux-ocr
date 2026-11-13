@@ -108,7 +108,7 @@ body.hr main{--rw:0px}body.hr aside.right{visibility:hidden;overflow:hidden;bord
 aside.left,aside.right{min-width:0}
 @media (max-width:1100px){body.hl aside.left{visibility:visible;overflow:visible}}
 @media (max-width:760px){body.hr aside.right{visibility:visible;overflow:visible}body.hr main{--rw:auto}}
-.vbar .tgl.on{color:var(--accent);background:var(--accent-2)}
+header .tgl.on{color:var(--accent);background:var(--accent-2)}
 section.center{position:relative}
 .edge{position:absolute;top:50%;transform:translateY(-50%);z-index:8;width:16px;height:64px;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line-2);color:var(--text-2);box-shadow:var(--shadow);opacity:.85;transition:.15s}
 .edge:hover{opacity:1;color:var(--accent);width:20px}
@@ -483,8 +483,10 @@ table.ot td.low{background:#fff4e5}
       <div class="logo"><svg class="i" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8h8"/><path d="M7 12h10"/><path d="M7 16h6"/></svg></div>
       <div><b>IUX OCR</b> <span>로컬 문서 인식</span></div>
     </div>
+    <button class="btn icon ghost tgl tglL" id="tglL" title="왼쪽 패널 접기/펴기 ( [ )"></button>
     <div class="pills" id="pills"></div>
     <div class="hbtns">
+      <button class="btn icon ghost tgl tglR" id="tglR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
       <button class="btn" id="btnBatch" data-ic="files">폴더 일괄 처리</button>
       <button class="btn icon ghost" id="btnTheme" title="다크 모드" data-ic="moon"></button>
       <button class="btn icon ghost" id="btnHelp" title="엔진 설치 안내" data-ic="info"></button>
@@ -508,8 +510,6 @@ table.ot td.low{background:#fff4e5}
 
     <section class="center">
       <div class="vbar">
-        <button class="btn icon sm ghost tgl tglL" id="tglL" title="왼쪽 패널 접기/펴기 ( [ )"></button>
-        <button class="btn icon sm ghost tgl tglR" id="tglR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
         <div class="seg" id="cvSeg"><button data-cv="viewer" title="한 장 크게 보기 (더블클릭)"></button><button data-cv="grid" title="썸네일로 모아 보기 (G)"></button></div>
         <span class="gsize" id="gSizeBox" hidden title="썸네일 크기"><svg class="i" viewBox="0 0 24 24"><rect width="7" height="7" x="8.5" y="8.5" rx="1"/></svg><input type="range" id="gSize" min="90" max="420" step="10"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect width="16" height="16" x="4" y="4" rx="2"/></svg></span>
         <span class="sep"></span>
@@ -1957,7 +1957,7 @@ function applyWebMode(){
   const d=FMTS.find(f=>f[0]==='docx');if(d){d[1]='Word';d[2]='.doc (Word에서 열림)'}
   $$('#mHelper a[href="/helper-demo"]').forEach(a=>a.parentElement.hidden=true);
   $('#welcome p').innerHTML='설치 없이 이 브라우저 안에서 인식합니다. 문서는 서버로 올라가지 않고 이 PC 브라우저에만 저장됩니다.<br>왼쪽에 스캔 이미지나 PDF를 끌어다 놓으세요. <span class="muted">(첫 인식 때 한국어 모델 약 5MB를 내려받습니다)</span>';
-  $('.hbtns').insertAdjacentHTML('afterbegin','<button class="btn primary" id="btnPc" title="설치형 프로그램 내려받기">'+ic('download')+'PC 버전 받기</button>');
+  $('#tglR').insertAdjacentHTML('afterend','<button class="btn primary" id="btnPc" title="설치형 프로그램 내려받기">'+ic('download')+'PC 버전 받기</button>');
   $('#btnPc').onclick=()=>$('#mPc').classList.add('on');
   $('#docCount').insertAdjacentHTML('afterend','<span id="stoInfo" class="muted" style="font-weight:600;text-transform:none;letter-spacing:0;margin-left:6px"></span>');
   $('.welcome .steps').insertAdjacentHTML('afterend','<div style="margin-top:18px"><button class="btn" onclick="document.getElementById(\'mPc\').classList.add(\'on\')">'+ic('download')+'PC 설치형 내려받기 (대용량·오프라인용)</button></div>');
