@@ -277,8 +277,17 @@ table.ot td.low{background:#fff4e5}
 @keyframes locPulse{0%{box-shadow:0 0 0 0 rgba(47,91,255,.55)}70%{box-shadow:0 0 0 14px rgba(47,91,255,0)}100%{box-shadow:none}}
 .viewer.selmode .stage{cursor:crosshair}
 .viewer.panning,.viewer.panmode .stage{cursor:grab}
-.selpop{position:absolute;z-index:6;width:340px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.22);padding:10px;display:flex;flex-direction:column;gap:8px}
-.selpop .hd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--text-2)}
+.selpop{position:absolute;z-index:6;width:360px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.22);padding:10px;display:flex;flex-direction:column;gap:8px}
+.selpop .hd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--text-2);white-space:nowrap}
+.selpop .hd .autocp{white-space:nowrap;flex:0 0 auto}
+.selpop .sub{font-size:11.5px;color:var(--text-3);margin-top:-4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.selpop .pol{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.selpop .pol label{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--line);border-radius:13px;font-size:11.5px;font-weight:700;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.selpop .pol label:has(input:checked){border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.selpop .pol input[type=checkbox]{margin:0;accent-color:var(--accent)}
+.selpop .pol input[type=number]{width:38px;height:20px;border:1px solid var(--line);border-radius:5px;font-size:11.5px;padding:0 3px;background:var(--panel)}
+.selpop .prev{font-size:12px;padding:6px 8px;border-radius:7px;background:var(--bg-2);white-space:pre-wrap;word-break:break-all;max-height:90px;overflow:auto}
+.selpop .prev b{color:var(--accent);font-size:11px;margin-right:4px}
 .selpop .hd .sp{flex:1}
 .selpop textarea{width:100%;min-height:64px;max-height:220px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;line-height:1.55;resize:vertical;background:var(--panel);outline:none}
 .selpop textarea:focus{border-color:var(--accent)}
@@ -821,7 +830,7 @@ async function loadEngines(){
   $('#pills').innerHTML=
     pill(t.available,t.available&&!t.has_kor,'Tesseract',t.available?(t.has_kor?'v'+t.version.split(' ')[0]:'한국어 데이터 없음'):'미설치')+
     pill(p.available,false,'IUX 엔진',p.available?'손글씨':'사용 불가')+
-    pill(o.available,false,'Ollama',o.available?`모델 ${o.models.length}개`:'꺼짐');
+    pill(o.available,false,'AI(Ollama)',o.available?`모델 ${o.models.length}개`:'선택 · 미설치');
   $$('[data-help]').forEach(b=>b.onclick=openHelp);
   // 엔진 버튼
   $$('#engSel button').forEach(b=>{const e=b.dataset.e;const ok=e==='tesseract'?t.available:e==='iux'?p.available:(o.available&&o.vision.length>0);b.disabled=!ok;b.title=ok?'':(e==='ollama'&&o.available?'비전(이미지) 모델이 없습니다. 예: ollama pull qwen2.5vl:7b':(E[e]?.reason||'사용 불가'))});
@@ -1075,7 +1084,7 @@ function setAutoCopy(on,fromPop){
 }
 function copyLine(i,el){
   const t=curPage()?.result?.lines?.[i]?.text;if(t==null)return;
-  copyText(t,`${i+1}번째 줄을 복사했습니다`);
+  copyText(polish(t),`${i+1}번째 줄을 복사했습니다`);
   const b=(el||$(`.ln[data-i="${i}"]`))?.querySelector('.cp');if(b){b.classList.add('ok');b.innerHTML=ic('check');setTimeout(()=>{b.classList.remove('ok');b.innerHTML=ic('copy')},1200)}
 }
 /* 왼쪽 인식 박스 클릭 → 수정·복사 레이어 */
@@ -1084,7 +1093,7 @@ function openLinePop(i){
   const[x,y,w,h]=l.box;SEL.box=[x,y,x+w,y+h];SEL.key=selKey();SEL.line=i;
   drawSelRect(SEL.box);
   showSelPop(l.text,`${i+1}번째 줄${l.conf!=null?` · 신뢰도 ${Math.round(l.conf)}`:''}${S.autoCopy?' · 복사됨':''}`);
-  if(S.autoCopy)copyText(l.text,`${i+1}번째 줄을 복사했습니다`);
+  if(S.autoCopy)copyText(polish(l.text),`${i+1}번째 줄을 복사했습니다`);
 }
 
 /* 확신이 낮은 숫자(금액·날짜·번호)를 노란색으로 — 원본과 대조할 곳 */
@@ -1493,6 +1502,27 @@ async function processDocs(ids){
 /* ---------- 영역 선택 → 글자 복사 ---------- */
 const SEL={drag:null,box:null,key:null,space:false,line:null};
 S.autoCopy=store.get('autoCopy',false);
+S.polish=Object.assign({space:false,nospace:false,oneline:false,others:false,othersLen:10,othersUnit:'명'},store.get('polish',{}));
+/* 복사할 때 다듬기 — 인식 결과는 그대로 두고 복사되는 글만 바꾼다 */
+function polish(t){
+  const P=S.polish;if(t==null)return t;let s=String(t);
+  if(P.oneline)s=s.replace(/\s*\n+\s*/g,' ');
+  if(P.nospace)s=s.split('\n').map(l=>l.replace(/[ \t\u3000]+/g,'')).join('\n');
+  else if(P.space)s=s.split('\n').map(l=>{
+    const tk=l.trim().split(/[ \t\u3000]+/).filter(Boolean),out=[];
+    for(const w of tk){const last=out[out.length-1];
+      // 한 글자씩 벌어진 글(출 석 부)은 붙인다. 숫자·영문 한 글자는 그대로
+      if(last!=null&&/^[가-힣]$/.test(w)&&/^[가-힣]+$/.test(last)&&last._s)out[out.length-1]=Object.assign(new String(last+w),{_s:true});
+      else out.push(/^[가-힣]$/.test(w)?Object.assign(new String(w),{_s:true}):w)}
+    return out.map(String).join(' ').replace(/\s+([,.)\]:;!?])/g,'$1').replace(/([(\[])\s+/g,'$1')
+      .replace(/([0-9A-Za-z])([-@/]) +(?=[0-9A-Za-z])/g,'$1$2') // 02- 123 → 02-123, hong@ gongform → hong@gongform
+      .replace(/(\d) ([년월일개명건원층호반차회])(?=$|[\s,.)])/g,'$1$2')}).join('\n'); // 1 반 → 1반
+  if(P.others){
+    s=s.split('\n').map(l=>{const it=l.split(/\s*[,，、]\s*/).map(x=>x.trim()).filter(Boolean);
+      return it.length>=2&&l.replace(/\s/g,'').length>P.othersLen?`${it[0]} 외 ${it.length-1}${P.othersUnit}`:l}).join('\n');
+  }
+  return s;
+}
 S.tool=store.get('tool','select');
 const selKey=()=>S.doc?`${S.doc.id}/${S.page}`:null;
 function setTool(t){S.tool=t;store.set('tool',t);$$('#toolSeg button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));$('#viewer').classList.toggle('selmode',t==='select');$('#viewer').classList.toggle('panmode',t==='pan')}
@@ -1513,20 +1543,28 @@ async function onSelected(b){
   const p=curPage();const{hit,partial}=linesInBox(b);
   if(hit.length&&!partial){
     const L=p.result.lines;let prev=null,out=[];for(const i of hit){if(prev!==null&&L[i].block!==L[prev].block)out.push('');out.push(L[i].text);prev=i}
-    showSelPop(out.join('\n'),`인식된 ${hit.length}줄`);
+    showSelPop(out.join('\n'),`인식된 ${hit.length}줄${S.autoCopy?' · 복사됨':''}`);if(S.autoCopy)copySel();
   }else regionOcr(b,hit.length?'줄 일부만 선택해 이 영역만 인식':'이 영역 인식');
 }
 async function regionOcr(b,label){
   showSelPop(null,label);
   try{const r=await api(`/api/docs/${S.doc.id}/ocr-region`,{json:{page:S.page,box:b,view:S.view==='proc'&&curPage()?.result?.pre?'proc':'image',engine:S.set.engine==='iux'?'iux':(S.set.engine==='ollama'?'ollama':'tesseract'),lang:S.set.lang,model:S.set.vlm||null}});
-    if(SEL.box!==b)return;showSelPop(r.text||'',`${label}${r.mean_conf!=null?` · 신뢰도 ${Math.round(r.mean_conf)}`:''}`)}
+    if(SEL.box!==b)return;showSelPop(r.text||'',`${label}${r.mean_conf!=null?` · 신뢰도 ${Math.round(r.mean_conf)}`:''}${S.autoCopy&&r.text?' · 복사됨':''}`);if(S.autoCopy&&r.text)copySel()}
   catch(e){if(SEL.box===b)showSelPop('',`인식 실패: ${e.message}`)}
 }
 function showSelPop(text,label){
   const pop=$('#selPop'),st=$('#stage'),v=$('#viewer'),b=SEL.box;if(!b)return;
   const vals=S.doc?.fields?.values||[];
-  pop.innerHTML=`<div class="hd">${ic('copy')}<span>${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="muted" style="font-weight:600">${esc(label||'')}</span><span class="sp"></span><label class="autocp" title="켜면 박스·줄을 클릭만 해도 바로 복사"><input type="checkbox" id="spAuto" ${S.autoCopy?'checked':''}>자동 복사</label><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
+  const P=S.polish;
+  pop.innerHTML=`<div class="hd">${ic('copy')}<span>${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="sp"></span><label class="autocp" title="켜면 박스·줄을 클릭만 해도 바로 복사"><input type="checkbox" id="spAuto" ${S.autoCopy?'checked':''}>자동 복사</label><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
+    ${label?`<div class="sub" title="${esc(label)}">${esc(label)}</div>`:''}
     ${text===null?`<div class="placeholder" style="padding:14px">${ic('loader','spin')} 인식 중…</div>`:`<textarea id="spText" spellcheck="false">${esc(text)}</textarea>`}
+    ${text===null?'':`<div class="pol" title="복사할 때 글자를 다듬습니다 (원본 인식 결과는 그대로)">
+      <label title="출 석 부 → 출석부 · 두 칸 이상 띄어쓰기 → 한 칸"><input type="checkbox" data-pol="space" ${P.space?'checked':''}>띄어쓰기 정리</label>
+      <label title="띄어쓰기를 모두 없애고 붙여서"><input type="checkbox" data-pol="nospace" ${P.nospace?'checked':''}>붙여 쓰기</label>
+      <label title="여러 줄을 한 줄로 이어서"><input type="checkbox" data-pol="oneline" ${P.oneline?'checked':''}>한 줄로</label>
+      <label title="쉼표로 나열된 글이 길면 '첫 항목 외 N명'으로"><input type="checkbox" data-pol="others" ${P.others?'checked':''}><input type="number" id="spOthN" min="1" max="99" value="${P.othersLen}">자 넘으면 외 N<select id="spOthU" style="height:20px;font-size:11px;flex:0 0 auto;width:auto;padding:0 2px">${['명','건','개','곳'].map(u=>`<option ${u===P.othersUnit?'selected':''}>${u}</option>`).join('')}</select></label>
+    </div><div class="prev" id="spPrev" hidden></div>`}
     <div class="row"><button class="btn sm primary" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 (Ctrl+C)</button><button class="btn sm" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button>${SEL.line!=null?'<span class="muted" style="font-size:11px;align-self:center">고치면 오른쪽 텍스트에도 반영</span>':''}</div>
     <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div>`;
   pop.hidden=false;
@@ -1551,10 +1589,15 @@ function showSelPop(text,label){
   $('#spRe').onclick=()=>{SEL.line=null;regionOcr(b,'이 영역 인식')};
   $('#spText')?.addEventListener('input',e=>{if(SEL.line!=null)setLineText(SEL.line,e.target.value.replace(/\n/g,' '))});
   $('#spCopy').onclick=copySel;
+  const prev=()=>{const t=$('#spText')?.value,pv=$('#spPrev');if(t==null||!pv)return;const o=polish(t);pv.hidden=o===t;pv.innerHTML=`<b>복사될 글</b>${esc(o)}`};
+  $$('#selPop [data-pol]').forEach(c=>c.onchange=()=>{S.polish[c.dataset.pol]=c.checked;if(c.dataset.pol==='space'&&c.checked)S.polish.nospace=false;if(c.dataset.pol==='nospace'&&c.checked)S.polish.space=false;$$('#selPop [data-pol]').forEach(x=>x.checked=!!S.polish[x.dataset.pol]);store.set('polish',S.polish);prev();if(S.autoCopy)copySel()});
+  $('#spOthN')&&($('#spOthN').oninput=e=>{S.polish.othersLen=Math.max(1,+e.target.value||10);store.set('polish',S.polish);prev()});
+  $('#spOthU')&&($('#spOthU').onchange=e=>{S.polish.othersUnit=e.target.value;store.set('polish',S.polish);prev()});
+  $('#spText')?.addEventListener('input',prev);prev();
   $('#spField').onchange=e=>putSelIntoField(e.target.value);
   $('#spText')?.addEventListener('keydown',e=>{if(e.key==='Escape')hideSel()});
 }
-function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(t,SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
+function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(polish(t),SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
 async function putSelIntoField(sel){
   const t=$('#spText')?.value;if(!t||sel==='')return;const d=S.doc;
   if(!d.fields)d.fields={template_id:S.set.tpl||'',values:[],checked:false,edited:true};
