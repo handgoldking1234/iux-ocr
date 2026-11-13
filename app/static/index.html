@@ -969,7 +969,7 @@ function docRow(d){return `<div class="doc ${S.doc?.id===d.id?'on':''}" data-id=
      <button class="btn icon sm ghost del" data-del="${d.id}" title="삭제">${ic('trash')}</button></div>`}
 function renderDocList(){
   const el=$('#docs'),dv=S.dv;$$('#dvSeg button').forEach(b=>b.classList.toggle('on',b.dataset.dv===dv));
-  el.className='docs'+(dv==='icon'?' icon':'');
+  el.className='docs'+(dv==='icon'&&S.docs.length?' icon':'');
   if(!S.docs.length){el.innerHTML='<div class="empty-side">아직 문서가 없습니다.</div>';return}
   if(dv==='icon'){
     el.innerHTML=S.docs.map(d=>{const t=docThumb(d);return `<div class="dcard ${S.doc?.id===d.id?'on':''}" data-id="${d.id}" title="${esc((d.folder||d.name)+` · ${d.done}/${d.pages}쪽 인식`)}"><div class="tb">${t?`<img loading="lazy" src="${t}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{innerHTML:ic('image')}))">`:ic(/\.pdf$/i.test(d.name)?'file':'folder')}<span class="cnt">${d.pages}p</span></div><div class="nm">${esc(d.name)}</div><button class="btn icon sm ghost del" data-del="${d.id}" title="삭제">${ic('trash')}</button></div>`}).join('');
