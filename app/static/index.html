@@ -59,7 +59,8 @@ a.btn{text-decoration:none;color:inherit}
 main{display:grid;--lw:260px;--rw:440px;grid-template-columns:var(--lw) 1fr var(--rw);min-height:0;transition:grid-template-columns .18s}
 aside.left{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .drop .btns{display:flex;gap:6px;margin-top:10px}
-.drop .btns .btn{flex:1;height:30px;font-size:12px}
+.drop .btns .btn{flex:1 1 0;min-width:0;height:30px;font-size:12px;padding:0 6px;gap:4px;white-space:nowrap;overflow:hidden}
+.drop small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .upbar{margin:8px 0 0;height:4px;border-radius:4px;background:var(--line);overflow:hidden}
 .upbar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
 .sec-h .acts{display:flex;gap:2px;align-items:center}
@@ -405,7 +406,8 @@ table.ot td.low{background:#fff4e5}
 @media (max-width:1180px){.zoomv{display:none}.pg{min-width:44px}}
 @media (max-width:960px) and (min-width:761px){main{--rw:330px}}
 @media (max-width:1280px){
-  main{--lw:210px;--rw:370px}
+  main{--lw:236px;--rw:370px}
+  .drop{margin:10px;padding:12px 10px}
   .vbar .name{display:none}
   #rotAuto,#btnBatch,#btnPc{font-size:0;gap:0;padding:0 8px}
   #rotAuto svg,#btnBatch svg,#btnPc svg{margin:0}
