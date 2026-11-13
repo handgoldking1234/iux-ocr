@@ -504,6 +504,10 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     };
     if (p === '/api/docs' && method === 'GET') {
       const docs = await allDocs();
+      for (const d of docs) { // 아이콘 보기용: 각 문서 첫 쪽 썸네일 주소 미리 준비
+        noteKeys(d); const p0 = d.pages[0];
+        if (p0 && !p0.pending) { const k = `${d.id}/thumb/${pk(p0)}`; if (!URLS[k]) { const b = await getBlob(k) || await getBlob(`${d.id}/image/${pk(p0)}`); if (b) URLS[k] = URL.createObjectURL(b); } }
+      }
       return docs.map(d => { const f = d.fields || {}; return { id: d.id, name: d.name, created: d.created, pages: d.pages.length, done: d.pages.filter(x => x.result).length, pending: d.pages.filter(x => x.pending).length, folder: d.folder || '', checked: !!f.checked, filled: (f.values || []).filter(v => v.value).length }; }).sort((a, b) => b.created - a.created);
     }
     if (p === '/api/project/export') { // 작업 파일 (.iuxocr): 원본 이미지 + 인식 결과·고친 글자·표·항목

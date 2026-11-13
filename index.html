@@ -99,6 +99,8 @@ aside.left{background:var(--panel);border-right:1px solid var(--line);display:fl
 .th .st{position:absolute;right:4px;top:4px;font-size:10.5px;font-weight:700;border-radius:4px;padding:1px 5px;background:var(--ok);color:#fff}
 .th .st.low{background:var(--warn)}
 .th .st.run{background:var(--accent)}
+.pgsec{display:flex;flex-direction:column;min-height:0;flex:1}
+body.nopg .pgsec{display:none}body.nopg .docs{max-height:none;flex:1}
 .empty-side{padding:24px 16px;color:var(--text-3);font-size:12px;text-align:center;line-height:1.6}
 /* 패널 접기 */
 body.hl main{--lw:0px}body.hl aside.left{visibility:hidden;overflow:hidden;border:0;min-width:0}
@@ -121,13 +123,13 @@ section.center{position:relative}
 .dvseg button{width:24px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--text-3)}
 .dvseg button svg{width:14px;height:14px}
 .dvseg button.on{background:var(--accent-2);color:var(--accent)}
-.docs.icon{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;padding:2px 10px 10px}
+.docs.icon{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;padding:2px 10px 10px}
 .dcard{border-radius:8px;cursor:pointer;padding:5px;position:relative}
 .dcard:hover{background:var(--panel-2)}.dcard.on{background:var(--accent-2)}
-.dcard .tb{aspect-ratio:1/1.1;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden;display:grid;place-items:center;color:var(--text-3);position:relative}
+.dcard .tb{aspect-ratio:1/1.15;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden;display:grid;place-items:center;color:var(--text-3);position:relative}
 .dcard .tb img{width:100%;height:100%;object-fit:cover;object-position:top}
 .dcard .tb .cnt{position:absolute;right:4px;bottom:4px;font-size:10px;font-weight:800;background:rgba(16,24,40,.75);color:#fff;border-radius:4px;padding:0 5px}
-.dcard .nm{font-size:11.5px;font-weight:600;margin-top:4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcard .nm{font-size:11px;font-weight:600;margin-top:4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dcard .del{position:absolute;right:2px;top:2px;opacity:0;background:var(--panel)}.dcard:hover .del{opacity:1}
 .ftree{padding:0 6px 8px}
 .ftree .fnode{display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:6px;cursor:pointer;font-size:12.5px;color:var(--text-2);white-space:nowrap}
@@ -500,8 +502,8 @@ table.ot td.low{background:#fff4e5}
       </div>
       <div class="sec-h"><span>문서 <span id="docCount"></span></span><span class="acts"><span class="dvseg" id="dvSeg"><button data-dv="list" title="목록" data-ic="list"></button><button data-dv="icon" title="아이콘 (첫 쪽 미리보기)" data-ic="grid"></button><button data-dv="tree" title="폴더 (탐색기처럼)" data-ic="folder"></button></span><button class="btn ghost" id="delAllDocs" title="작업 목록 비우기">비우기</button></span></div>
       <div class="docs" id="docs"></div>
-      <div class="sec-h" style="border-top:1px solid var(--line);padding-top:10px"><span>페이지</span><span id="pageCount"></span></div>
-      <div class="thumbs" id="thumbs"></div>
+      <div class="pgsec" id="pgSec"><div class="sec-h" style="border-top:1px solid var(--line);padding-top:10px"><span>페이지</span><span id="pageCount"></span></div>
+      <div class="thumbs" id="thumbs"></div></div>
     </aside>
 
     <section class="center">
@@ -991,7 +993,7 @@ function renderDocList(){
   $$('#docs [data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('이 문서를 작업 목록에서 삭제할까요? (원본 파일은 그대로입니다)'))return;await api('/api/docs/'+b.dataset.del,{method:'DELETE'});if(S.doc?.id===b.dataset.del){S.doc=null;renderAll()}loadDocs()});
 }
 /* 가운데: 한 장 보기 ↔ 썸네일 모아 보기 */
-function setCv(v){S.cv=v;store.set('cv',v);$$('#cvSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cv===v));$('#gSizeBox').hidden=v!=='grid';if(v==='grid')hideSel();renderGrid();if(v==='viewer')renderViewer()}
+function setCv(v){S.cv=v;renderThumbs();store.set('cv',v);$$('#cvSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cv===v));$('#gSizeBox').hidden=v!=='grid';if(v==='grid')hideSel();renderGrid();if(v==='viewer')renderViewer()}
 function renderGrid(){
   const g=$('#pgrid');if(!g)return;const on=S.cv==='grid'&&!!S.doc;g.hidden=!on;
   $('#viewer').classList.toggle('gridmode',on);
@@ -1022,6 +1024,8 @@ async function openDoc(id,page=0,fromHelper=false){
   if(S.tab==='fields')ensureFields();else renderFields();
 }
 function renderThumbs(){
+  // 가운데가 썸네일 보기이거나 한 장짜리 문서면 왼쪽 '페이지' 칸은 숨기고 문서 목록을 길게
+  document.body.classList.toggle('nopg',!S.doc||S.cv==='grid'||S.doc.pages.length<=1);
   if(!S.doc){$('#thumbs').innerHTML='';$('#pageCount').textContent='';return}
   $('#pageCount').textContent=S.doc.pages.length+'p';
   const pend=S.doc.pages.filter(p=>p.pending).length;
