@@ -135,6 +135,10 @@ body.hr main{--rw:0px}body.hr aside.right{display:none}
 .pgrid .gi .st.low{background:var(--warn)}.pgrid .gi .st.wait{background:#667085}
 .viewer.gridmode{overflow:hidden}.pgrid{z-index:3}
 @media (max-width:760px){#tglR{display:none!important}.pgrid{padding:10px;gap:8px}}
+.pgrid .gpick,.pgrid .ghint{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2);padding:2px 2px 0}
+.pgrid .gpick{position:sticky;top:-14px;z-index:2;background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:8px 12px;box-shadow:var(--shadow)}
+.pgrid .gi.pick{border-color:var(--accent);border-style:dashed;background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.pgrid .gi.pick::after{content:'✓';position:absolute;left:10px;top:10px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:800;display:grid;place-items:center}
 .gsize{display:flex;align-items:center;gap:4px}.gsize input{width:90px;accent-color:var(--accent)}
 .gsize svg{width:13px;height:13px;color:var(--text-3)}
 .pend .prev{max-width:min(92%,900px);max-height:calc(100% - 120px);object-fit:contain;box-shadow:var(--shadow);background:#fff;margin-bottom:12px}
@@ -195,6 +199,7 @@ select:focus,input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
 .chip.on{background:var(--text);border-color:var(--text);color:var(--panel)}
 .runrow{display:flex;gap:6px}
 .runrow .btn{flex:1;height:36px}
+.runrow #runStop{flex:0 0 40px;padding:0}
 .prog{height:4px;background:var(--line);border-radius:4px;overflow:hidden;display:none}
 .prog.show{display:block}
 .prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
@@ -475,12 +480,11 @@ table.ot td.low{background:#fff4e5}
         <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         <b>여기에 끌어다 놓기</b><small>이미지 · PDF · TIFF · 폴더째로도 가능</small>
         <div class="btns"><button class="btn" id="addFiles" data-ic="file">파일 추가</button><button class="btn" id="addFolder" data-ic="folder">폴더 추가</button></div>
-        <label class="autoconv" title="폴더를 넣으면 파일 목록만 먼저 불러옵니다. '전체 페이지 인식'을 누르면 한 장씩 불러오면서 텍스트로 변환합니다"><input type="checkbox" id="autoConv">폴더는 목록만 먼저 (변환은 버튼으로)</label>
         <div class="upbar" id="upbar" hidden><i></i></div>
         <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf,.iuxocr" hidden>
         <input type="file" id="folder" webkitdirectory directory multiple hidden>
       </div>
-      <div class="sec-h"><span>문서 <span id="docCount"></span></span><span class="acts"><span class="dvseg" id="dvSeg"><button data-dv="list" title="목록" data-ic="list"></button><button data-dv="icon" title="아이콘 (첫 쪽 미리보기)" data-ic="grid"></button><button data-dv="tree" title="폴더 (탐색기처럼)" data-ic="folder"></button></span><button class="btn ghost" id="ocrAllDocs" title="인식 안 한 모든 문서·페이지를 차례로 인식">모두 인식</button><button class="btn ghost" id="delAllDocs" title="작업 목록 비우기">비우기</button></span></div>
+      <div class="sec-h"><span>문서 <span id="docCount"></span></span><span class="acts"><span class="dvseg" id="dvSeg"><button data-dv="list" title="목록" data-ic="list"></button><button data-dv="icon" title="아이콘 (첫 쪽 미리보기)" data-ic="grid"></button><button data-dv="tree" title="폴더 (탐색기처럼)" data-ic="folder"></button></span><button class="btn ghost" id="delAllDocs" title="작업 목록 비우기">비우기</button></span></div>
       <div class="docs" id="docs"></div>
       <div class="sec-h" style="border-top:1px solid var(--line);padding-top:10px"><span>페이지</span><span id="pageCount"></span></div>
       <div class="thumbs" id="thumbs"></div>
@@ -976,11 +980,18 @@ function renderGrid(){
   $('#viewer').classList.toggle('gridmode',on);
   if(!on)return;
   const st=g.scrollTop;g.style.setProperty('--gs',S.gs+'px');
+  const bar=S.pick.size?`<div class="gpick"><b>${S.pick.size}장 선택</b><span style="flex:1"></span><button class="btn sm primary" id="gPickGo">${ic('play')}선택한 ${S.pick.size}장 인식</button><button class="btn sm" id="gPickClr">선택 해제</button></div>`:`<div class="ghint">클릭해서 고른 뒤 오른쪽 <b>이 페이지 인식</b> · Ctrl·Shift+클릭으로 여러 장 골라 한 번에 인식</div>`;
   g.innerHTML=S.doc.pages.map((p,i)=>{const r=p.result,t=pageThumb(S.doc.id,p,i,S.gs>220);let b='';
     if(p.pending)b='<span class="st wait">대기</span>';else if(r){const low=r.mean_conf!=null&&r.mean_conf<80;b=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):'✓'}</span>`}
-    return `<div class="gi ${i===S.page?'on':''}" data-i="${i}" title="${esc(p.source||'')} — 클릭: 선택(오른쪽에서 인식) · 더블클릭: 크게 보기"><div class="im">${t?`<img loading="lazy" decoding="async" src="${t}">`:ic('image')}</div><div class="cap">${i+1}. ${esc(p.source||'')}</div>${b}</div>`}).join('');
-  g.scrollTop=st;
-  $$('#pgrid .gi').forEach(el=>{el.onclick=()=>{const i=+el.dataset.i;if(i===S.page)return;S.page=i;S.sel=-1;S.view=curPage()?.result?.pre?'proc':'image';$$('#pgrid .gi').forEach(x=>x.classList.toggle('on',x===el));renderThumbs();renderText();renderRefine();$('#pgLabel').textContent=`${S.page+1} / ${S.doc.pages.length}`;$(`#thumbs .th[data-i="${i}"]`)?.scrollIntoView({block:'nearest'})};
+    return `<div class="gi ${i===S.page?'on':''} ${S.pick.has(pkey(p))?'pick':''}" data-i="${i}" title="${esc(p.source||'')} — 클릭: 선택(오른쪽에서 인식) · Ctrl·Shift+클릭: 여러 장 골라 인식 · 더블클릭: 크게 보기"><div class="im">${t?`<img loading="lazy" decoding="async" src="${t}">`:ic('image')}</div><div class="cap">${i+1}. ${esc(p.source||'')}</div>${b}</div>`}).join('');
+  g.insertAdjacentHTML('afterbegin',bar);g.scrollTop=st;
+  $('#gPickGo')?.addEventListener('click',()=>{const keys=S.doc.pages.map(pkey).filter(k=>S.pick.has(k));S.pick.clear();processDoc(S.doc.id,keys,{redo:true})});
+  $('#gPickClr')?.addEventListener('click',()=>{S.pick.clear();renderThumbs();renderGrid()});
+  $$('#pgrid .gi').forEach(el=>{el.onclick=e=>{const i=+el.dataset.i,key=pkey(S.doc.pages[i]);
+      if(e.shiftKey&&S.pickLast!=null){const[a,b]=[Math.min(S.pickLast,i),Math.max(S.pickLast,i)];for(let k=a;k<=b;k++)S.pick.add(pkey(S.doc.pages[k]));renderThumbs();renderGrid();return}
+      if(e.ctrlKey||e.metaKey){S.pick.has(key)?S.pick.delete(key):S.pick.add(key);S.pickLast=i;renderThumbs();renderGrid();return}
+      if(S.pick.size){S.pick.clear();renderThumbs();renderGrid()}S.pickLast=i;
+      if(i===S.page)return;S.page=i;S.sel=-1;S.view=curPage()?.result?.pre?'proc':'image';$$('#pgrid .gi').forEach(x=>x.classList.toggle('on',x===el));renderThumbs();renderText();renderRefine();$('#pgLabel').textContent=`${S.page+1} / ${S.doc.pages.length}`;$(`#thumbs .th[data-i="${i}"]`)?.scrollIntoView({block:'nearest'})};
     el.ondblclick=()=>setCv('viewer')});
   $('#pgrid .gi.on')?.scrollIntoView({block:'nearest'});
 }
@@ -1009,7 +1020,7 @@ function renderThumbs(){
   $$('#thumbs .th').forEach(el=>el.onclick=e=>{
     const i=+el.dataset.i,key=pkey(S.doc.pages[i]);
     if(e.shiftKey&&S.pickLast!=null){const[a,b]=[Math.min(S.pickLast,i),Math.max(S.pickLast,i)];for(let k=a;k<=b;k++)S.pick.add(pkey(S.doc.pages[k]));renderThumbs();return}
-    if(e.ctrlKey||e.metaKey){S.pick.has(key)?S.pick.delete(key):S.pick.add(key);S.pickLast=i;renderThumbs();return}
+    if(e.ctrlKey||e.metaKey){S.pick.has(key)?S.pick.delete(key):S.pick.add(key);S.pickLast=i;renderThumbs();renderGrid();return}
     if(S.pick.size){S.pick.clear()}S.pickLast=i;gotoPage(i);afterPick()});
   $('#pickGo')?.addEventListener('click',()=>{const keys=S.doc.pages.map(pkey).filter(k=>S.pick.has(k));S.pick.clear();processDoc(S.doc.id,keys,{redo:true})});
   $('#pickClr')?.addEventListener('click',()=>{S.pick.clear();renderThumbs()});
@@ -1539,7 +1550,7 @@ async function saveAutoAsTemplate(){
 /* ---------- 한 장씩 불러오며 변환 (검수 프로그램 방식) ---------- */
 const FILEREF={};            // 문서별 { 상대경로: File } — 아직 불러오지 않은 쪽의 원본
 const pkey=p=>p.key||String(p.index);
-S.pick=new Set();S.pickLast=null;S.autoConv=store.get('autoConv',true);
+S.pick=new Set();S.pickLast=null;S.autoConv=true; // 폴더는 항상 목록만 먼저 불러오고, 인식은 선택해서 버튼으로
 async function processDoc(docId,onlyKeys,opt={}){
   if(S.running&&!opt.inner)return toast('이미 변환 중입니다',true);
   if(S.set.engine==='ollama'&&!S.set.vlm){toast('AI 비전 모델을 선택하세요',true);return}
@@ -1966,8 +1977,6 @@ function bind(){
   bindResponsive();
   $('#drop').onclick=e=>{if(e.target.closest('button,input,label'))return;$('#file').click()};
   $('#addFiles').onclick=e=>{e.stopPropagation();$('#file').click()};
-  $('#autoConv').checked=S.autoConv;$('#autoConv').onchange=e=>{S.autoConv=e.target.checked;store.set('autoConv',S.autoConv)};
-  $('#autoConv').closest('label').onclick=e=>e.stopPropagation();
   $('#addFolder').onclick=e=>{e.stopPropagation();$('#folder').click()};
   $('#file').onchange=e=>{upload(e.target.files);e.target.value=''};
   $('#folder').onchange=e=>{
@@ -1978,7 +1987,6 @@ function bind(){
       toast(n?`대기 중인 ${n}개 파일을 다시 연결했습니다`:'맞는 파일을 찾지 못했습니다. 처음 넣었던 폴더를 선택하세요',!n);renderViewer();return}
     const items=normItems([...e.target.files].map(f=>({file:f,path:f.webkitRelativePath||f.name})));e.target.value='';if(!items.length)return toast('폴더에 이미지·PDF가 없습니다',true);upload2(items,{mode:'folder'})};
   $('#fdGo').onclick=()=>{const mode=$('input[name=fdMode]:checked').value,ocr=$('#fdOcr').checked;$('#mFolder').classList.remove('on');const it=pendingFolder;pendingFolder=null;if(it)upload2(it,{mode,ocr})};
-  $('#ocrAllDocs').onclick=()=>runDocs(S.docs.filter(d=>d.done<d.pages).map(d=>d.id));
   $('#delAllDocs').onclick=async()=>{if(!S.docs.length)return;if(!confirm(`작업 목록의 문서 ${S.docs.length}개를 모두 지울까요? (원본 파일은 그대로입니다)`))return;for(const d of S.docs)await api('/api/docs/'+d.id,{method:'DELETE'});S.doc=null;renderAll();renderFields();loadDocs();toast('목록을 비웠습니다')};
   let dc=0;
   addEventListener('dragenter',e=>{if(e.dataTransfer?.types?.includes('Files')){dc++;$('#dropAll').classList.add('on')}});
