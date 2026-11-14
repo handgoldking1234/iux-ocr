@@ -9,7 +9,7 @@
 :root{
   --bg:#eeeeee; --panel:#ffffff; --panel-2:#f5f5f5; --line:#e6e6e6; --line-2:#d2d2d2;
   --text:#121212; --text-2:#4d4d4d; --text-3:#8f8f8f;
-  --accent:#11a854; --accent-2:#e2f5ea; --accent-ink:#0b7a3b; --on-accent:#000;
+  --accent:#0d9488; --accent-2:#dcf3f0; --accent-ink:#0f766e; --on-accent:#fff;
   --ok:#12a150; --ok-bg:#e7f6ee; --warn:#e8770c; --warn-bg:#fff1e3; --bad:#d92d20; --bad-bg:#fdecea;
   --viewer:#e9ebef; --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
   --radius:10px; --font:"Pretendard","Pretendard Variable","Malgun Gothic","맑은 고딕","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
@@ -18,7 +18,7 @@
 [data-theme=dark]{
   --bg:#000000; --panel:#121212; --panel-2:#1f1f1f; --line:#2a2a2a; --line-2:#3e3e3e;
   --text:#ffffff; --text-2:#b3b3b3; --text-3:#7a7a7a;
-  --accent:#11a854; --accent-2:#11331f; --accent-ink:#1ed760; --on-accent:#000;
+  --accent:#14b8a6; --accent-2:#0d2e2b; --accent-ink:#5eead4; --on-accent:#03201c;
   --ok:#3ccf7e; --ok-bg:#12291d; --warn:#ff9d47; --warn-bg:#33230f; --bad:#ff6b5e; --bad-bg:#3a1714;
   --viewer:#0a0a0a; --shadow:0 8px 24px rgba(0,0,0,.5);
 }
@@ -123,7 +123,7 @@ section.center{position:relative}
 .dvseg button{width:24px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--text-3)}
 .dvseg button svg{width:14px;height:14px}
 .dvseg button.on{background:var(--accent-2);color:var(--accent)}
-.docs.icon{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;padding:2px 10px 10px}
+.docs.icon{align-content:start;align-items:start;display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;padding:2px 10px 10px}
 .dcard{border-radius:8px;cursor:pointer;padding:5px;position:relative}
 .dcard:hover{background:var(--panel-2)}.dcard.on{background:var(--accent-2)}
 .dcard .tb{aspect-ratio:1/1.15;border-radius:6px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden;display:grid;place-items:center;color:var(--text-3);position:relative}
@@ -178,10 +178,10 @@ section.center{display:flex;flex-direction:column;min-width:0;min-height:0}
 .stage{position:relative;margin:24px auto;box-shadow:0 4px 24px rgba(0,0,0,.18);background:#fff}
 .stage img{display:block;width:100%;height:100%;user-select:none;-webkit-user-drag:none}
 .stage svg{position:absolute;inset:0;width:100%;height:100%}
-.bx{fill:rgba(17,168,84,.06);stroke:rgba(17,168,84,.55);stroke-width:1;vector-effect:non-scaling-stroke;cursor:pointer}
+.bx{fill:rgba(20,184,166,.06);stroke:rgba(20,184,166,.55);stroke-width:1;vector-effect:non-scaling-stroke;cursor:pointer}
 .bx.low{fill:rgba(232,119,12,.18);stroke:rgba(232,119,12,.9)}
-.bx.sel{fill:rgba(17,168,84,.22);stroke:var(--accent);stroke-width:2.5}
-.bx:hover{fill:rgba(17,168,84,.16)}
+.bx.sel{fill:rgba(20,184,166,.22);stroke:var(--accent);stroke-width:2.5}
+.bx:hover{fill:rgba(20,184,166,.16)}
 .welcome{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--text-2)}
 .welcome .card{max-width:520px;padding:32px}
 .welcome h2{font-size:22px;font-weight:800;color:var(--text);margin:14px 0 8px;letter-spacing:-.03em}
@@ -333,9 +333,9 @@ table.ot td.low{background:#fff4e5}
 .doc .chk{font-size:10px;font-weight:800;color:var(--ok);background:var(--ok-bg);border-radius:4px;padding:0 5px}
 .doc .fil{font-size:10px;font-weight:700;color:var(--accent-ink);background:var(--accent-2);border-radius:4px;padding:0 5px}
 .bm{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;background:#1f2a44;color:#fff;font-weight:800;text-decoration:none;cursor:grab}
-.selrect{position:absolute;border:2px solid var(--accent);background:rgba(17,168,84,.12);pointer-events:none;border-radius:2px;z-index:3}
+.selrect{position:absolute;border:2px solid var(--accent);background:rgba(20,184,166,.12);pointer-events:none;border-radius:2px;z-index:3}
 .selrect.loc{animation:locPulse 1.2s ease-out}
-@keyframes locPulse{0%{box-shadow:0 0 0 0 rgba(17,168,84,.55)}70%{box-shadow:0 0 0 14px rgba(17,168,84,0)}100%{box-shadow:none}}
+@keyframes locPulse{0%{box-shadow:0 0 0 0 rgba(20,184,166,.55)}70%{box-shadow:0 0 0 14px rgba(20,184,166,0)}100%{box-shadow:none}}
 .viewer.selmode .stage{cursor:crosshair}
 .viewer.panning,.viewer.panmode .stage{cursor:grab}
 .selpop{position:absolute;z-index:6;width:360px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.22);padding:10px;display:flex;flex-direction:column;gap:8px}
@@ -408,7 +408,7 @@ table.ot td.low{background:#fff4e5}
 @keyframes tin{from{transform:translateY(8px);opacity:0}}
 .spin{animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-.dropall{position:fixed;inset:0;background:rgba(17,168,84,.12);border:3px dashed var(--accent);z-index:80;display:none;place-items:center;font-size:20px;font-weight:800;color:var(--accent-ink);pointer-events:none}
+.dropall{position:fixed;inset:0;background:rgba(20,184,166,.12);border:3px dashed var(--accent);z-index:80;display:none;place-items:center;font-size:20px;font-weight:800;color:var(--accent-ink);pointer-events:none}
 .dropall.on{display:grid}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:10px;border:3px solid transparent;background-clip:padding-box}
@@ -494,7 +494,7 @@ section.center{background:var(--panel)}
 .btn.icon{border-radius:50%}
 .btn.ghost{color:var(--text-2)}.btn.ghost:hover{color:var(--text)}
 .btn.primary:hover{filter:none;background:var(--accent-ink);border-color:var(--accent-ink);transform:scale(1.02)}
-[data-theme=light] .btn.primary:hover{background:#0e9549;border-color:#0e9549}
+[data-theme=light] .btn.primary:hover{background:#0b7f75;border-color:#0b7f75}
 .pill{background:var(--panel);border-color:var(--line)}
 .seg{border-radius:99px!important}.seg button{border-radius:99px!important}
 .seg button.on{background:var(--text);color:var(--bg);box-shadow:none}
@@ -504,6 +504,25 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
 .tabs button.on,.tabs button[aria-selected=true]{color:var(--text)}
 @media (max-width:1100px){main{padding:0 8px 8px}}
 @media (max-width:760px){main{gap:0;padding:0}aside.left,aside.right,section.center{border-radius:0}.viewer{border-radius:0}}
+
+/* ---------- 넓은 화면: 좌우 패널을 위아래 끝까지 (머리글은 가운데 칸 위에만) ---------- */
+.ph{display:none}
+@media (min-width:1101px){
+  .app{--lw:260px;--rw:440px;grid-template-columns:var(--lw) minmax(0,1fr) var(--rw);grid-template-rows:52px minmax(0,1fr);column-gap:8px;padding:8px;transition:grid-template-columns .18s}
+  body.hl .app{--lw:0px}body.hr .app{--rw:0px}
+  body.hl .app{column-gap:8px}
+  main{display:contents}
+  header{grid-column:2;grid-row:1;padding:0 4px 8px;gap:10px;min-width:0}
+  header .brand{min-width:0}
+  aside.left{grid-column:1;grid-row:1/3}
+  section.center{grid-column:2;grid-row:2}
+  aside.right{grid-column:3;grid-row:1/3}
+  .ph{display:flex;align-items:center;gap:8px;height:52px;padding:0 10px 0 14px;flex:0 0 auto;border-bottom:1px solid var(--line)}
+  .ph .brand{flex:1;min-width:0}
+  aside.right .ph{padding:0 12px 0 10px}
+  aside.right .ph .hbtns{margin-left:auto;display:flex;gap:6px}
+}
+@media (min-width:1101px) and (max-width:1440px){.app{--lw:230px;--rw:400px}}
 </style>
 </head>
 <body>
@@ -524,7 +543,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
     </div>
   </header>
   <main>
-    <aside class="left">
+    <aside class="left"><div class="ph" id="phL"></div>
       <div class="drop" id="drop">
         <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
         <b>여기에 끌어다 놓기</b><small>이미지 · PDF · TIFF · 폴더째로도 가능</small>
@@ -591,7 +610,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
       <button class="edge eR" id="edgeR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
     </section>
 
-    <aside class="right">
+    <aside class="right"><div class="ph" id="phR"></div>
       <div class="ocrbox">
         <div class="row"><span class="lbl">엔진</span>
           <div class="eng" id="engSel">
@@ -1045,7 +1064,12 @@ function renderGrid(){
     el.ondblclick=()=>setCv('viewer')});
   $('#pgrid .gi.on')?.scrollIntoView({block:'nearest'});
 }
-function setPanels(){$('#edgeL').innerHTML=ic(S.hl?'chevR':'chevL');$('#edgeR').innerHTML=ic(S.hr?'chevL':'chevR');document.body.classList.toggle('hl',S.hl);document.body.classList.toggle('hr',S.hr);$('#tglL').classList.toggle('on',!S.hl);$('#tglR').classList.toggle('on',!S.hr);store.set('panels',{hl:S.hl,hr:S.hr});setTimeout(()=>{if(S.cv!=='grid')renderViewer()},200)}
+function placeHead(){ // 넓은 화면: 로고·왼쪽 접기는 왼쪽 패널 머리, 오른쪽 접기·버튼은 오른쪽 패널 머리 (접히면 다시 위 머리글로)
+  const wide=matchMedia('(min-width:1101px)').matches,hd=$('header'),pills=$('#pills');
+  if(wide&&!S.hl)$('#phL').append($('.brand'),$('#tglL'));else{hd.insertBefore($('.brand'),pills);hd.insertBefore($('#tglL'),pills)}
+  if(wide&&!S.hr)$('#phR').append($('#tglR'),$('.hbtns'));else{hd.append($('.hbtns'));$('.hbtns').prepend($('#tglR'))}
+}
+function setPanels(){placeHead();$('#edgeL').innerHTML=ic(S.hl?'chevR':'chevL');$('#edgeR').innerHTML=ic(S.hr?'chevL':'chevR');document.body.classList.toggle('hl',S.hl);document.body.classList.toggle('hr',S.hr);$('#tglL').classList.toggle('on',!S.hl);$('#tglR').classList.toggle('on',!S.hr);store.set('panels',{hl:S.hl,hr:S.hr});setTimeout(()=>{if(S.cv!=='grid')renderViewer()},200)}
 async function openDoc(id,page=0,fromHelper=false){
   S.doc=await api('/api/docs/'+id);S.page=Math.min(page,S.doc.pages.length-1);S.sel=-1;S.rf=null;S.copied=new Set();
   if(!fromHelper)syncSelect();
@@ -2011,7 +2035,7 @@ function applyWebMode(){
   const d=FMTS.find(f=>f[0]==='docx');if(d){d[1]='Word';d[2]='.doc (Word에서 열림)'}
   $$('#mHelper a[href="/helper-demo"]').forEach(a=>a.parentElement.hidden=true);
   $('#welcome p').innerHTML='설치 없이 이 브라우저 안에서 인식합니다. 문서는 서버로 올라가지 않고 이 PC 브라우저에만 저장됩니다.<br>왼쪽에 스캔 이미지나 PDF를 끌어다 놓으세요. <span class="muted">(첫 인식 때 한국어 모델 약 5MB를 내려받습니다)</span>';
-  $('#tglR').insertAdjacentHTML('afterend','<button class="btn primary" id="btnPc" title="설치형 프로그램 내려받기">'+ic('download')+'PC 버전 받기</button>');
+  $('.hbtns').insertAdjacentHTML('afterbegin','<button class="btn primary" id="btnPc" title="설치형 프로그램 내려받기">'+ic('download')+'PC 버전 받기</button>');
   $('#btnPc').onclick=()=>$('#mPc').classList.add('on');
   $('#docCount').insertAdjacentHTML('afterend','<span id="stoInfo" class="muted" style="font-weight:600;text-transform:none;letter-spacing:0;margin-left:6px"></span>');
   $('.welcome .steps').insertAdjacentHTML('afterend','<div style="margin-top:18px"><button class="btn" onclick="document.getElementById(\'mPc\').classList.add(\'on\')">'+ic('download')+'PC 설치형 내려받기 (대용량·오프라인용)</button></div>');
@@ -2044,6 +2068,7 @@ function bind(){
   paintIcons();
   $('#tglL').innerHTML=ic('panelL');$('#tglR').innerHTML=ic('panelR');
   $$('#cvSeg button').forEach(b=>b.innerHTML=b.dataset.cv==='grid'?ic('grid')+'<span>썸네일</span>':ic('viewer')+'<span>뷰어</span>');
+  matchMedia('(min-width:1101px)').addEventListener('change',placeHead);
   $('#tglL').onclick=$('#edgeL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=$('#edgeR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
   $$('#cvSeg button').forEach(b=>b.onclick=()=>setCv(b.dataset.cv));
   const gs=$('#gSize');gs.value=S.gs;gs.oninput=()=>{S.gs=+gs.value;store.set('gs',S.gs);$('#pgrid').style.setProperty('--gs',S.gs+'px')};gs.onchange=()=>renderGrid();
