@@ -607,7 +607,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
     <section class="center">
       <div class="vbar">
         <div class="seg" id="cvSeg"><button data-cv="viewer" title="한 장 크게 보기 (더블클릭)"></button><button data-cv="grid" title="썸네일로 모아 보기 (G)"></button></div>
-        <span class="gsize" id="gSizeBox" hidden title="썸네일 크기"><svg class="i" viewBox="0 0 24 24"><rect width="7" height="7" x="8.5" y="8.5" rx="1"/></svg><input type="range" id="gSize" min="90" max="1200" step="10"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect width="16" height="16" x="4" y="4" rx="2"/></svg></span>
+        <span class="gsize" id="gSizeBox" hidden title="썸네일 크기 (Ctrl+마우스 휠)"><svg class="i" viewBox="0 0 24 24"><rect width="7" height="7" x="8.5" y="8.5" rx="1"/></svg><input type="range" id="gSize" min="90" max="1200" step="10"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect width="16" height="16" x="4" y="4" rx="2"/></svg></span>
         <span class="sep"></span>
         <button class="btn icon sm ghost" id="pPrev" data-ic="left" title="이전 페이지 (←)"></button>
         <span class="pg" id="pgLabel">-</span>
@@ -2210,7 +2210,14 @@ function bind(){
     setT(-best);toast(`${-Math.round(best*10)/10}°로 맞췄습니다 — 확인 후 적용`)}catch(e){toast('자동 찾기를 못 했습니다',true)}};
   $('#tiltOk').onclick=async()=>{const v=+$('#tiltN').value;if(!v){closeT();return}const keep=S.page;closeT();await rot((v+360)%360,false);S.page=keep};
   $('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=()=>{S.zoom=null;applyZoom()};
-  $('#viewer').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoomBy(e.deltaY<0?1.1:1/1.1)}},{passive:false});
+  $('#viewer').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey))return;e.preventDefault();
+    if(S.cv==='grid'){ // 썸네일 보기: Ctrl+휠로 썸네일 크기 (마우스 아래 썸네일이 제자리에 남게)
+      const g=$('#pgrid'),gi=e.target.closest('.gi'),before=gi?gi.getBoundingClientRect().top:0;
+      S.gs=Math.max(90,Math.min(1200,Math.round(S.gs*(e.deltaY<0?1.12:1/1.12)/10)*10));$('#gSize').value=S.gs;store.set('gs',S.gs);
+      g.style.setProperty('--gs',S.gs+'px');g.classList.toggle('one',S.gs*2+14>g.clientWidth-32);
+      if(gi)g.scrollTop+=gi.getBoundingClientRect().top-before;
+      clearTimeout(S.gsT);S.gsT=setTimeout(renderGrid,250); // 큰 썸네일이면 선명한 이미지로 다시
+    }else zoomBy(e.deltaY<0?1.1:1/1.1)},{passive:false});
   // 드래그로 이동
   bindSelect();
   addEventListener('resize',()=>{if(S.zoom==null)applyZoom()});
