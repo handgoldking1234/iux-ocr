@@ -137,6 +137,11 @@ section.center{position:relative}
 .pgrid.one .gi{max-width:min(100%,1100px);justify-self:center;width:100%}
 .pgrid.one .gi .im{aspect-ratio:auto}.pgrid.one .gi img{height:auto}
 .viewer.gridmode .pend{display:none}
+.vtools.gridtools .vt-g:not(#toolSeg){display:none}
+.pgrid.selmode .gi img{cursor:crosshair}
+.pgrid .gi .im{position:relative}
+.pgrid .gsel{position:absolute;border:2px solid var(--accent);background:rgba(20,184,166,.15);pointer-events:none;border-radius:2px}
+@media (min-width:761px){.viewer.gridmode .pgrid{padding-left:84px}}
 .pgrid .gi{cursor:pointer;border-radius:8px;padding:6px;border:2px solid transparent;position:relative}
 .pgrid .gi:hover{background:color-mix(in srgb,var(--panel) 60%,transparent)}
 .pgrid .gi.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
@@ -1084,15 +1089,36 @@ function renderGrid(){
   const g=$('#pgrid');if(!g)return;const on=S.cv==='grid'&&!!S.doc;g.hidden=!on;
   $('#viewer').classList.toggle('gridmode',on);
   if(!on)return;
-  const st=g.scrollTop;g.style.setProperty('--gs',S.gs+'px');g.classList.toggle('one',S.gs*2+14>g.clientWidth-32); // 한 줄에 한 장
-  const bar=S.pick.size?`<div class="gpick"><b>${S.pick.size}장 선택</b><span style="flex:1"></span><button class="btn sm primary" id="gPickGo">${ic('play')}선택한 ${S.pick.size}장 인식</button><button class="btn sm" id="gPickClr">선택 해제</button></div>`:`<div class="ghint">클릭해서 고른 뒤 오른쪽 <b>이 페이지 인식</b> · Ctrl·Shift+클릭으로 여러 장 골라 한 번에 인식</div>`;
+  const st=g.scrollTop;g.style.setProperty('--gs',S.gs+'px');g.classList.toggle('selmode',S.tool==='select');g.classList.toggle('one',S.gs*2+14>g.clientWidth-32); // 한 줄에 한 장
+  const bar=S.pick.size?`<div class="gpick"><b>${S.pick.size}장 선택</b><span style="flex:1"></span><button class="btn sm primary" id="gPickGo">${ic('play')}선택한 ${S.pick.size}장 인식</button><button class="btn sm" id="gPickClr">선택 해제</button></div>`:`<div class="ghint">선택툴로 썸네일 위를 끌면 그 부분만 바로 인식 · 클릭해서 고른 뒤 오른쪽 <b>이 페이지 인식</b> · Ctrl·Shift+클릭으로 여러 장</div>`;
   g.innerHTML=S.doc.pages.map((p,i)=>{const r=p.result,t=pageThumb(S.doc.id,p,i,S.gs>220);let b='';
     if(p.pending)b='<span class="st wait">대기</span>';else if(r){const low=r.mean_conf!=null&&r.mean_conf<80;b=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):'✓'}</span>`}
     return `<div class="gi ${i===S.page?'on':''} ${S.pick.has(pkey(p))?'pick':''}" data-i="${i}" title="${esc(p.source||'')} — 클릭: 선택(오른쪽에서 인식) · Ctrl·Shift+클릭: 여러 장 골라 인식 · 더블클릭: 크게 보기"><div class="im">${t?`<img loading="lazy" decoding="async" src="${t}">`:ic('image')}</div><div class="cap">${i+1}. ${esc(p.source||'')}</div>${b}</div>`}).join('');
   g.insertAdjacentHTML('afterbegin',bar);g.scrollTop=st;
   $('#gPickGo')?.addEventListener('click',()=>{const keys=S.doc.pages.map(pkey).filter(k=>S.pick.has(k));S.pick.clear();processDoc(S.doc.id,keys,{redo:true})});
   $('#gPickClr')?.addEventListener('click',()=>{S.pick.clear();renderThumbs();renderGrid()});
-  $$('#pgrid .gi').forEach(el=>{el.onclick=e=>{const i=+el.dataset.i,key=pkey(S.doc.pages[i]);
+  // 선택툴: 썸네일 위에서 끌면 그 쪽의 그 영역만 바로 인식
+  $$('#pgrid .gi img').forEach(img=>{img.draggable=false;img.onpointerdown=e=>{
+    if(S.tool!=='select'||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey)return;
+    const gi=img.closest('.gi'),i=+gi.dataset.i;
+    const ir=img.getBoundingClientRect(),nw=img.naturalWidth||ir.width,nh=img.naturalHeight||ir.height,sc=Math.min(ir.width/nw,ir.height/nh);
+    const cr={left:ir.left+(ir.width-nw*sc)/2,top:ir.top+(ir.height-nh*sc)/2,width:nw*sc,height:nh*sc}; // object-fit:contain 실제 그림 자리
+    const nx=x=>Math.max(0,Math.min(1,(x-cr.left)/cr.width)),ny=y=>Math.max(0,Math.min(1,(y-cr.top)/cr.height));
+    const p0=[nx(e.clientX),ny(e.clientY)];let b=null;e.preventDefault();img.setPointerCapture(e.pointerId);
+    $$('#pgrid .gsel').forEach(x=>x.remove());const box=document.createElement('div');box.className='gsel';gi.querySelector('.im').append(box);
+    const ofx=cr.left-gi.querySelector('.im').getBoundingClientRect().left,ofy=cr.top-gi.querySelector('.im').getBoundingClientRect().top;
+    img.onpointermove=m=>{const p1=[nx(m.clientX),ny(m.clientY)];b=[Math.min(p0[0],p1[0]),Math.min(p0[1],p1[1]),Math.max(p0[0],p1[0]),Math.max(p0[1],p1[1])];
+      if((b[2]-b[0])*cr.width<5&&(b[3]-b[1])*cr.height<5){b=null;return}
+      Object.assign(box.style,{left:ofx+b[0]*cr.width+'px',top:ofy+b[1]*cr.height+'px',width:(b[2]-b[0])*cr.width+'px',height:(b[3]-b[1])*cr.height+'px'})};
+    img.onpointerup=()=>{img.onpointermove=img.onpointerup=null;if(!b){box.remove();return}
+      gi.dataset.dragged='1';setTimeout(()=>delete gi.dataset.dragged,0);
+      if(i!==S.page){S.page=i;S.sel=-1;S.view='image';$$('#pgrid .gi').forEach(x=>x.classList.toggle('on',x===gi));renderThumbs();renderText();renderRefine();$('#pgLabel').textContent=`${S.page+1} / ${S.doc.pages.length}`}
+      else S.view='image';
+      const br=box.getBoundingClientRect();SEL.grect={left:br.left,right:br.right,top:br.top,bottom:br.bottom};
+      onSelected(b)}};
+  });
+  g.onscroll=()=>{if(SEL.grect)hideSel()};
+  $$('#pgrid .gi').forEach(el=>{el.onclick=e=>{if(el.dataset.dragged)return;const i=+el.dataset.i,key=pkey(S.doc.pages[i]);
       if(e.shiftKey&&S.pickLast!=null){const[a,b]=[Math.min(S.pickLast,i),Math.max(S.pickLast,i)];for(let k=a;k<=b;k++)S.pick.add(pkey(S.doc.pages[k]));renderThumbs();renderGrid();return}
       if(e.ctrlKey||e.metaKey){S.pick.has(key)?S.pick.delete(key):S.pick.add(key);S.pickLast=i;renderThumbs();renderGrid();return}
       if(S.pick.size){S.pick.clear();renderThumbs();renderGrid()}S.pickLast=i;
@@ -1105,7 +1131,7 @@ function placeHead(){document.body.classList.toggle('nohead',matchMedia('(min-wi
   if(wide&&!S.hl)$('#phL').append($('.brand'),$('#tglL'));else{hd.insertBefore($('.brand'),pills);hd.insertBefore($('#tglL'),pills)}
   if(wide&&!S.hr)$('#phR').append($('#tglR'),$('.hbtns'));else{hd.append($('.hbtns'));$('.hbtns').prepend($('#tglR'))}
 }
-function syncTools(){const vt=$('#vtools');if(!vt)return;vt.hidden=!S.doc||S.cv==='grid';vt.style.setProperty('--vt-top',($('.vbar').offsetHeight+10)+'px')}
+function syncTools(){const vt=$('#vtools');if(!vt)return;vt.hidden=!S.doc;vt.classList.toggle('gridtools',S.cv==='grid');vt.style.setProperty('--vt-top',($('.vbar').offsetHeight+10)+'px')}
 function setPanels(){placeHead();document.body.classList.toggle('hl',S.hl);document.body.classList.toggle('hr',S.hr);$('#tglL').classList.toggle('on',!S.hl);$('#tglR').classList.toggle('on',!S.hr);store.set('panels',{hl:S.hl,hr:S.hr});setTimeout(()=>{if(S.cv!=='grid')renderViewer()},200)}
 async function openDoc(id,page=0,fromHelper=false){
   S.doc=await api('/api/docs/'+id);S.page=Math.min(page,S.doc.pages.length-1);S.sel=-1;S.rf=null;S.copied=new Set();
@@ -1751,10 +1777,10 @@ function polish(t){
 }
 S.tool=store.get('tool','select');
 const selKey=()=>S.doc?`${S.doc.id}/${S.page}`:null;
-function setTool(t){S.tool=t;store.set('tool',t);$$('#toolSeg button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));$('#viewer').classList.toggle('selmode',t==='select');$('#viewer').classList.toggle('panmode',t==='pan')}
+function setTool(t){S.tool=t;store.set('tool',t);$$('#toolSeg button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));$('#viewer').classList.toggle('selmode',t==='select');$('#viewer').classList.toggle('panmode',t==='pan');$('#pgrid')?.classList.toggle('selmode',t==='select')}
 function stagePt(e){const r=$('#stage').getBoundingClientRect();return[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]}
 function drawSelRect(b){const el=$('#selRect');el.hidden=false;el.style.left=b[0]*100+'%';el.style.top=b[1]*100+'%';el.style.width=(b[2]-b[0])*100+'%';el.style.height=(b[3]-b[1])*100+'%'}
-function hideSel(){SEL.box=null;SEL.key=null;SEL.line=null;$('#selRect').hidden=true;$('#selPop').hidden=true}
+function hideSel(){SEL.box=null;SEL.key=null;SEL.line=null;SEL.grect=null;$('#selRect').hidden=true;$('#selPop').hidden=true;$$('#pgrid .gsel').forEach(e=>e.remove())}
 /* 선택 영역에 걸친 인식 줄 찾기. 줄의 일부만 잘렸으면 null(→ 영역 다시 인식) */
 function linesInBox(b){
   const L=curPage()?.result?.lines||[],hit=[];let partial=false;
@@ -1780,7 +1806,7 @@ async function regionOcr(b,label){
       const f=FILEREF[S.doc.id]?.[p0.path];if(!f)throw new Error('원본 파일 연결이 끊겼습니다 — 같은 폴더를 다시 선택하세요');
       const docId=S.doc.id,fd=new FormData();fd.append('key',pkey(p0));fd.append('files',f,f.name);
       const r0=await api(`/api/docs/${docId}/fill`,{method:'POST',body:fd});delete FILEREF[docId][p0.path];
-      if(S.doc?.id===docId){S.doc=r0.doc;SEL.key=selKey();renderThumbs();renderViewer();renderGrid();renderText();loadDocs()}
+      if(S.doc?.id===docId){S.doc=r0.doc;SEL.key=selKey();renderThumbs();if(S.cv!=='grid'){renderViewer();renderGrid()}else{const t=$(`#pgrid .gi[data-i="${S.page}"] .st`);if(t)t.remove()}renderText();loadDocs()}
     }const r=await api(`/api/docs/${S.doc.id}/ocr-region`,{json:{page:S.page,box:b,view:S.view==='proc'&&curPage()?.result?.pre?'proc':'image',engine:S.set.engine==='iux'?'iux':(S.set.engine==='ollama'?'ollama':'tesseract'),lang:S.set.lang,model:S.set.vlm||null}});
     if(SEL.box!==b)return;showSelPop(r.text||'',`${label}${r.mean_conf!=null?` · 신뢰도 ${Math.round(r.mean_conf)}`:''}${S.autoCopy&&r.text?' · 복사됨':''}`);if(S.autoCopy&&r.text)copySel()}
   catch(e){if(SEL.box===b)showSelPop('',`인식 실패: ${e.message}`)}
@@ -1804,7 +1830,13 @@ function showSelPop(text,label){
     <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div></div>`;
   pop.hidden=false;
   bindPopUi(pop,v);
-  {const L=st.offsetLeft,T_=st.offsetTop,W=st.offsetWidth,H=st.offsetHeight;
+  if(S.cv==='grid'&&SEL.grect){ // 썸네일 보기: 고른 썸네일 영역 바로 아래(없으면 위·옆)
+    const vr=v.getBoundingClientRect(),r=SEL.grect,PW=pop.offsetWidth,PH=pop.offsetHeight,VW=v.clientWidth,VH=v.clientHeight;
+    const x0=r.left-vr.left,x1=r.right-vr.left,y0=r.top-vr.top,y1=r.bottom-vr.top;
+    let left=Math.max(8,Math.min(x0,VW-PW-8)),top;
+    if(y1+8+PH<=VH-8)top=y1+8;else if(y0-8-PH>=8)top=y0-8-PH;else{left=x1+12+PW<=VW-8?x1+12:Math.max(8,x0-12-PW);top=Math.max(8,Math.min(y0,VH-PH-8))}
+    pop.style.left=(left+v.scrollLeft)+'px';pop.style.top=(top+v.scrollTop)+'px';
+  }else{const L=st.offsetLeft,T_=st.offsetTop,W=st.offsetWidth,H=st.offsetHeight;
   const PW=pop.offsetWidth,PH=pop.offsetHeight,vL=v.scrollLeft,vR=vL+v.clientWidth,vT=v.scrollTop,vB=vT+v.clientHeight;
   const bx0=L+b[0]*W,bx1=L+b[2]*W,by0=T_+b[1]*H,by1=T_+b[3]*H;
   let left=Math.max(vL+8,Math.min(bx0,vR-PW-8)),top;
