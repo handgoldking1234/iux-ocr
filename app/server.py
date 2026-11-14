@@ -189,15 +189,20 @@ def ingest_files(items: list[tuple[Path, str]], doc_name: str, existing: dict | 
     return doc
 
 
-def rotate_page(doc: dict, idx: int, deg: int) -> dict:
-    """페이지 이미지를 시계 방향으로 deg(90/180/270)만큼 돌려 저장. 인식 결과는 지운다."""
+def rotate_page(doc: dict, idx: int, deg: float) -> dict:
+    """페이지 이미지를 시계 방향으로 deg만큼 돌려 저장 (90/180/270 또는 조금씩 기울기 맞춤). 인식 결과는 지운다."""
     import cv2 as _cv
     d = DOCS / doc["id"]
     p = doc["pages"][idx]
-    code = {90: _cv.ROTATE_90_CLOCKWISE, 180: _cv.ROTATE_180, 270: _cv.ROTATE_90_COUNTERCLOCKWISE}.get(deg % 360)
-    if code is None:
+    deg = float(deg) % 360
+    if abs(deg) < 0.05:
         return p
-    img = _cv.rotate(preprocess.load_bgr(str(d / p["file"])), code)
+    code = {90.0: _cv.ROTATE_90_CLOCKWISE, 180.0: _cv.ROTATE_180, 270.0: _cv.ROTATE_90_COUNTERCLOCKWISE}.get(deg)
+    src = preprocess.load_bgr(str(d / p["file"]))
+    if code is not None:
+        img = _cv.rotate(src, code)
+    else:  # 조금씩 기울기 맞춤: 빈 곳은 흰색으로
+        img = preprocess._rotate(src, -(deg if deg <= 180 else deg - 360))
     preprocess.save_png(str(d / p["file"]), img)
     p["height"], p["width"] = img.shape[:2]
     p["rev"] = p.get("rev", 0) + 1
@@ -255,7 +260,7 @@ class RegionReq(BaseModel):
 
 class RotateReq(BaseModel):
     pages: list[int]
-    deg: int = 90
+    deg: float = 90
 
 
 class FieldsUpdate(BaseModel):

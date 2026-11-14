@@ -300,7 +300,8 @@ function trimEdgeFragments(x, ox, oy, w, h) {
   async function rotateStored(doc, idx, deg) {
     const p = doc.pages[idx];
     const key = pk(p);
-    const c = rotateCw(await blobToCanvas(await getBlob(`${doc.id}/image/${key}`)), deg);
+    const src0 = await blobToCanvas(await getBlob(`${doc.id}/image/${key}`)), dd = ((deg % 360) + 360) % 360;
+    const c = dd % 90 === 0 ? rotateCw(src0, dd) : rotated(src0, dd > 180 ? dd - 360 : dd, '#fff'); // 조금씩 기울기 맞춤
     await setBlob(doc.id, 'image', key, await toBlob(c, 'image/jpeg', 0.92));
     await setBlob(doc.id, 'thumb', key, await thumbOf(c));
     await tx('blobs', 'readwrite', s => s.delete(`${doc.id}/proc/${key}`));
