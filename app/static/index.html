@@ -132,7 +132,10 @@ section.center{position:relative}
 .ftree .fkids{margin-left:14px;border-left:1px dashed var(--line);padding-left:2px}
 .ftree .doc{padding:5px 6px}.ftree .doc .ico{width:24px;height:24px}
 /* 가운데 썸네일 보기 */
-.pgrid{position:absolute;inset:0;overflow:auto;padding:14px 16px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--gs,160px),1fr));gap:14px;align-content:start;background:var(--viewer)}
+.pgrid{position:absolute;inset:0;overflow:auto;padding:14px 16px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(var(--gs,160px),100%),1fr));gap:14px;align-content:start;background:var(--viewer)}
+.pgrid.one .gi{max-width:min(100%,1100px);justify-self:center;width:100%}
+.pgrid.one .gi .im{aspect-ratio:auto}.pgrid.one .gi img{height:auto}
+.viewer.gridmode .pend{display:none}
 .pgrid .gi{cursor:pointer;border-radius:8px;padding:6px;border:2px solid transparent;position:relative}
 .pgrid .gi:hover{background:color-mix(in srgb,var(--panel) 60%,transparent)}
 .pgrid .gi.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
@@ -589,7 +592,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
     <section class="center">
       <div class="vbar">
         <div class="seg" id="cvSeg"><button data-cv="viewer" title="한 장 크게 보기 (더블클릭)"></button><button data-cv="grid" title="썸네일로 모아 보기 (G)"></button></div>
-        <span class="gsize" id="gSizeBox" hidden title="썸네일 크기"><svg class="i" viewBox="0 0 24 24"><rect width="7" height="7" x="8.5" y="8.5" rx="1"/></svg><input type="range" id="gSize" min="90" max="420" step="10"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect width="16" height="16" x="4" y="4" rx="2"/></svg></span>
+        <span class="gsize" id="gSizeBox" hidden title="썸네일 크기"><svg class="i" viewBox="0 0 24 24"><rect width="7" height="7" x="8.5" y="8.5" rx="1"/></svg><input type="range" id="gSize" min="90" max="1200" step="10"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><rect width="16" height="16" x="4" y="4" rx="2"/></svg></span>
         <span class="sep"></span>
         <button class="btn icon sm ghost" id="pPrev" data-ic="left" title="이전 페이지 (←)"></button>
         <span class="pg" id="pgLabel">-</span>
@@ -1078,7 +1081,7 @@ function renderGrid(){
   const g=$('#pgrid');if(!g)return;const on=S.cv==='grid'&&!!S.doc;g.hidden=!on;
   $('#viewer').classList.toggle('gridmode',on);
   if(!on)return;
-  const st=g.scrollTop;g.style.setProperty('--gs',S.gs+'px');
+  const st=g.scrollTop;g.style.setProperty('--gs',S.gs+'px');g.classList.toggle('one',S.gs*2+14>g.clientWidth-32); // 한 줄에 한 장
   const bar=S.pick.size?`<div class="gpick"><b>${S.pick.size}장 선택</b><span style="flex:1"></span><button class="btn sm primary" id="gPickGo">${ic('play')}선택한 ${S.pick.size}장 인식</button><button class="btn sm" id="gPickClr">선택 해제</button></div>`:`<div class="ghint">클릭해서 고른 뒤 오른쪽 <b>이 페이지 인식</b> · Ctrl·Shift+클릭으로 여러 장 골라 한 번에 인식</div>`;
   g.innerHTML=S.doc.pages.map((p,i)=>{const r=p.result,t=pageThumb(S.doc.id,p,i,S.gs>220);let b='';
     if(p.pending)b='<span class="st wait">대기</span>';else if(r){const low=r.mean_conf!=null&&r.mean_conf<80;b=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):'✓'}</span>`}
@@ -2100,7 +2103,7 @@ function bind(){
   matchMedia('(min-width:1101px)').addEventListener('change',placeHead);addEventListener('resize',syncTools);
   $('#tglL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
   $$('#cvSeg button').forEach(b=>b.onclick=()=>setCv(b.dataset.cv));
-  const gs=$('#gSize');gs.value=S.gs;gs.oninput=()=>{S.gs=+gs.value;store.set('gs',S.gs);$('#pgrid').style.setProperty('--gs',S.gs+'px')};gs.onchange=()=>renderGrid();
+  const gs=$('#gSize');gs.value=S.gs;gs.oninput=()=>{S.gs=+gs.value;store.set('gs',S.gs);const g=$('#pgrid');g.style.setProperty('--gs',S.gs+'px');g.classList.toggle('one',S.gs*2+14>g.clientWidth-32)};gs.onchange=()=>renderGrid();
   $$('#dvSeg button').forEach(b=>b.onclick=()=>{S.dv=b.dataset.dv;store.set('dv',S.dv);renderDocList()});
   setCv(S.cv);
   bindResponsive();
