@@ -18,7 +18,7 @@
 [data-theme=dark]{
   --bg:#000000; --panel:#121212; --panel-2:#1f1f1f; --line:#2a2a2a; --line-2:#3e3e3e;
   --text:#ffffff; --text-2:#b3b3b3; --text-3:#7a7a7a;
-  --accent:#14b8a6; --accent-2:#0d2e2b; --accent-ink:#5eead4; --on-accent:#03201c;
+  --accent:#0d9488; --accent-2:#0d2e2b; --accent-ink:#5eead4; --on-accent:#fff;
   --ok:#3ccf7e; --ok-bg:#12291d; --warn:#ff9d47; --warn-bg:#33230f; --bad:#ff6b5e; --bad-bg:#3a1714;
   --viewer:#0a0a0a; --shadow:0 8px 24px rgba(0,0,0,.5);
 }
@@ -110,13 +110,7 @@ aside.left,aside.right{min-width:0}
 @media (max-width:760px){body.hr aside.right{visibility:visible;overflow:visible}body.hr main{--rw:auto}}
 header .tgl.on{color:var(--accent);background:var(--accent-2)}
 section.center{position:relative}
-.edge{position:absolute;top:50%;transform:translateY(-50%);z-index:8;width:16px;height:64px;display:grid;place-items:center;background:var(--panel);border:1px solid var(--line-2);color:var(--text-2);box-shadow:var(--shadow);opacity:.85;transition:.15s}
-.edge:hover{opacity:1;color:var(--accent);width:20px}
-.edge svg{width:14px;height:14px}
-.edge.eL{left:0;border-left:0;border-radius:0 8px 8px 0}
-.edge.eR{right:0;border-right:0;border-radius:8px 0 0 8px}
-@media (max-width:1100px){.edge.eL{display:none}}
-@media (max-width:760px){.edge{display:none}.tglR{display:none!important}}
+@media (max-width:760px){.tglR{display:none!important}}
 /* 문서 목록 보기 방식: 목록 · 아이콘 · 폴더 */
 .dvseg{display:flex;gap:1px;margin-right:4px}
 .sec-h{white-space:nowrap;gap:6px}.sec-h>span:first-child{overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -493,8 +487,7 @@ section.center{background:var(--panel)}
 .btn{border-radius:99px}
 .btn.icon{border-radius:50%}
 .btn.ghost{color:var(--text-2)}.btn.ghost:hover{color:var(--text)}
-.btn.primary:hover{filter:none;background:var(--accent-ink);border-color:var(--accent-ink);transform:scale(1.02)}
-[data-theme=light] .btn.primary:hover{background:#0b7f75;border-color:#0b7f75}
+.btn.primary:hover{filter:none;background:#0b7f75;border-color:#0b7f75;color:#fff;transform:scale(1.02)}
 .pill{background:var(--panel);border-color:var(--line)}
 .seg{border-radius:99px!important}.seg button{border-radius:99px!important}
 .seg button.on{background:var(--text);color:var(--bg);box-shadow:none}
@@ -523,6 +516,33 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
   aside.right .ph .hbtns{margin-left:auto;display:flex;gap:6px}
 }
 @media (min-width:1101px) and (max-width:1440px){.app{--lw:230px;--rw:400px}}
+
+/* ---------- 뷰어 왼쪽 세로 도구막대 ---------- */
+.vtools{position:absolute;left:10px;top:var(--vt-top,60px);z-index:7;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.vtools .vt-g{display:flex;flex-direction:column;gap:2px}
+.vtools .vt-g+.vt-g{border-top:1px solid var(--line);padding-top:6px}
+.vtools button{width:52px;padding:6px 2px 5px!important;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:3px!important;color:var(--text-2);font-size:10.5px!important;font-weight:700;white-space:nowrap}
+.vtools button svg{width:17px;height:17px}
+.vtools button:hover{background:var(--panel-2);color:var(--text)}
+.vtools button.on{background:var(--accent-2);color:var(--accent-ink)}
+.vtools button:disabled{opacity:.35;cursor:not-allowed}
+@media (max-width:760px){
+  .vtools{top:auto;bottom:10px;left:50%;transform:translateX(-50%);flex-direction:row;padding:4px;gap:4px}
+  .vtools .vt-g{flex-direction:row}
+  .vtools .vt-g+.vt-g{border-top:0;border-left:1px solid var(--line);padding-top:0;padding-left:4px}
+  .vtools button{width:46px;font-size:10px!important}
+}
+/* ---------- 오른쪽 패널: 제목 위, 엔진 카드 전체 폭, 전처리 3열 ---------- */
+.ocrbox .row.stack{flex-direction:column;align-items:stretch;gap:6px}
+.ocrbox .row.stack .lbl{width:auto}
+.eng button{padding:8px 10px}
+.eng .est{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10.5px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eng .est .dot{width:6px;height:6px;flex:none}
+.eng .est .dot.on{box-shadow:0 0 0 2px var(--ok-bg)}
+#preChips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+#preChips .chip{justify-content:center;padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 넓은 화면에서 좌우 패널이 다 열려 있으면 위쪽 빈 머리글 줄을 없앰 */
+@media (min-width:1101px){body.nohead header{display:none}body.nohead section.center{grid-row:1/3}}
 </style>
 </head>
 <body>
@@ -534,7 +554,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
       <div><b>IUX OCR</b> <span>로컬 문서 인식</span></div>
     </div>
     <button class="btn icon ghost tgl tglL" id="tglL" title="왼쪽 패널 접기/펴기 ( [ )"></button>
-    <div class="pills" id="pills"></div>
+    <div class="pills" id="pills" hidden></div>
     <div class="hbtns">
       <button class="btn icon ghost tgl tglR" id="tglR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
       <button class="btn" id="btnBatch" data-ic="files">폴더 일괄 처리</button>
@@ -574,14 +594,6 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
         <span class="sep"></span>
         <button class="btn icon sm ghost" id="rotL" data-ic="rotl" title="왼쪽으로 90° 돌리기 (Shift+클릭: 문서 모든 쪽)"></button>
         <button class="btn icon sm ghost" id="rotR" data-ic="rotr" title="오른쪽으로 90° 돌리기 (Shift+클릭: 문서 모든 쪽)"></button>
-        <button class="btn sm ghost" id="rotAuto" data-ic="wand" title="문서의 모든 쪽 방향을 감지해 돌아간 쪽만 바로 세우기 (인식 전에도 가능)">자동 세움</button>
-        <span class="sep"></span>
-        <div class="seg" id="viewSeg">
-          <button data-v="image" class="on">원본</button>
-          <button data-v="proc">전처리</button>
-        </div>
-        <div class="seg" id="toolSeg"><button data-tool="select" title="드래그해서 영역의 글자 선택·복사 (Space를 누른 채 드래그하면 이동)"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>선택</button><button data-tool="pan" title="드래그로 화면 이동"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/></svg>이동</button></div>
-        <div class="seg"><button id="boxToggle" class="on"><svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg>박스</button></div>
         <span class="name" id="vName"></span>
       </div>
       <div class="viewer" id="viewer">
@@ -606,17 +618,29 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
         </div>
         <div class="selpop" id="selPop" hidden></div>
       </div>
-      <button class="edge eL" id="edgeL" title="왼쪽 패널 접기/펴기 ( [ )"></button>
-      <button class="edge eR" id="edgeR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
+      <div class="vtools" id="vtools" hidden>
+        <div class="vt-g" id="toolSeg">
+          <button data-tool="select" title="드래그해서 영역의 글자 선택·복사 (Space를 누른 채 드래그하면 이동)"><svg class="i" viewBox="0 0 24 24"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg><span>선택</span></button>
+          <button data-tool="pan" title="드래그로 화면 이동"><svg class="i" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><span>이동</span></button>
+        </div>
+        <div class="vt-g" id="viewSeg">
+          <button data-v="image" class="on" title="원본 이미지 보기"><svg class="i" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span>원본</span></button>
+          <button data-v="proc" title="전처리(보정)한 이미지 보기 — 인식에 쓴 그림"><svg class="i" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg><span>전처리</span></button>
+        </div>
+        <div class="vt-g">
+          <button id="boxToggle" class="on" title="인식한 글자 박스 보이기/숨기기"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h10"/><path d="M7 14h6"/></svg><span>박스</span></button>
+          <button id="rotAuto" title="문서의 모든 쪽 방향을 감지해 돌아간 쪽만 바로 세우기 (인식 전에도 가능)"><svg class="i" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg><span>자동 세움</span></button>
+        </div>
+      </div>
     </section>
 
     <aside class="right"><div class="ph" id="phR"></div>
       <div class="ocrbox">
-        <div class="row"><span class="lbl">엔진</span>
+        <div class="row stack"><span class="lbl">엔진</span>
           <div class="eng" id="engSel">
-            <button data-e="tesseract"><span class="tag">일반 PC</span><b>빠름</b><small>Tesseract</small></button>
-            <button data-e="iux"><span class="tag">손글씨</span><b>정확</b><small>IUX 엔진</small></button>
-            <button data-e="ollama"><span class="tag">GPU</span><b>AI</b><small>Ollama 비전</small></button>
+            <button data-e="tesseract"><b>빠름</b><small>Tesseract</small><span class="est"></span></button>
+            <button data-e="iux"><b>정확</b><small>IUX 엔진</small><span class="est"></span></button>
+            <button data-e="ollama"><b>AI</b><small>Ollama 비전</small><span class="est"></span></button>
           </div>
         </div>
         <div class="row" id="rowVlm" hidden><span class="lbl">AI 모델</span><select id="vlmSel" style="flex:1"></select></div>
@@ -635,7 +659,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
             <option value="11">흩어진 글자</option>
           </select>
         </div>
-        <div class="row"><span class="lbl">전처리</span>
+        <div class="row stack"><span class="lbl">전처리</span>
           <div class="chips" id="preChips">
             <button class="chip" data-k="deskew">기울기 보정</button>
             <button class="chip" data-k="contrast">대비 향상</button>
@@ -948,11 +972,11 @@ async function loadEngines(){
   const E=S.engines;
   const pill=(on,warn,label,sub)=>`<button class="pill" data-help><span class="dot ${on?(warn?'warn':'on'):''}"></span><b>${label}</b><span>${esc(sub)}</span></button>`;
   const t=E.tesseract,p=E.iux||{available:false},o=E.ollama;
-  $('#pills').innerHTML=
-    pill(t.available,t.available&&!t.has_kor,'Tesseract',t.available?(t.has_kor?'v'+t.version.split(' ')[0]:'한국어 데이터 없음'):'미설치')+
-    pill(p.available,false,'IUX 엔진',p.available?'손글씨':'사용 불가')+
-    pill(o.available,false,'AI(Ollama)',o.available?`모델 ${o.models.length}개`:'선택 · 미설치');
-  $$('[data-help]').forEach(b=>b.onclick=openHelp);
+  const est=(on,warn,sub)=>`<i class="dot ${on?(warn?'warn':'on'):''}"></i>${esc(sub)}`; // 엔진 카드 안 상태 (점 + 짧은 글)
+  $('#engSel [data-e=tesseract] .est').innerHTML=est(t.available,t.available&&!t.has_kor,t.available?(t.has_kor?'v'+t.version.split(' ')[0].split('.')[0]+' 준비됨':'한국어 데이터 없음'):'미설치');
+  $('#engSel [data-e=iux] .est').innerHTML=est(p.available,false,p.available?'준비됨':'사용 불가');
+  $('#engSel [data-e=ollama] .est').innerHTML=est(o.available,false,o.available?`모델 ${o.models.length}개`:'미설치');
+  $('#engSel [data-e=ollama] .est').onclick=e=>{if(!o.available){e.stopPropagation();openHelp()}};
   // 엔진 버튼
   $$('#engSel button').forEach(b=>{const e=b.dataset.e;const ok=e==='tesseract'?t.available:e==='iux'?p.available:(o.available&&o.vision.length>0);b.disabled=!ok;b.title=ok?'':(e==='ollama'&&o.available?'비전(이미지) 모델이 없습니다. 예: ollama pull qwen2.5vl:7b':(E[e]?.reason||'사용 불가'))});
   if($(`#engSel button[data-e="${S.set.engine}"]`)?.disabled){const f=$$('#engSel button').find(b=>!b.disabled);S.set.engine=f?f.dataset.e:'tesseract'}
@@ -1043,7 +1067,7 @@ function renderDocList(){
   $$('#docs [data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('이 문서를 작업 목록에서 삭제할까요? (원본 파일은 그대로입니다)'))return;await api('/api/docs/'+b.dataset.del,{method:'DELETE'});if(S.doc?.id===b.dataset.del){S.doc=null;renderAll()}loadDocs()});
 }
 /* 가운데: 한 장 보기 ↔ 썸네일 모아 보기 */
-function setCv(v){S.cv=v;renderThumbs();store.set('cv',v);$$('#cvSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cv===v));$('#gSizeBox').hidden=v!=='grid';if(v==='grid')hideSel();renderGrid();if(v==='viewer')renderViewer()}
+function setCv(v){S.cv=v;setTimeout(syncTools);renderThumbs();store.set('cv',v);$$('#cvSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cv===v));$('#gSizeBox').hidden=v!=='grid';if(v==='grid')hideSel();renderGrid();if(v==='viewer')renderViewer()}
 function renderGrid(){
   const g=$('#pgrid');if(!g)return;const on=S.cv==='grid'&&!!S.doc;g.hidden=!on;
   $('#viewer').classList.toggle('gridmode',on);
@@ -1064,12 +1088,13 @@ function renderGrid(){
     el.ondblclick=()=>setCv('viewer')});
   $('#pgrid .gi.on')?.scrollIntoView({block:'nearest'});
 }
-function placeHead(){ // 넓은 화면: 로고·왼쪽 접기는 왼쪽 패널 머리, 오른쪽 접기·버튼은 오른쪽 패널 머리 (접히면 다시 위 머리글로)
+function placeHead(){document.body.classList.toggle('nohead',matchMedia('(min-width:1101px)').matches&&!S.hl&&!S.hr); // 넓은 화면: 로고·왼쪽 접기는 왼쪽 패널 머리, 오른쪽 접기·버튼은 오른쪽 패널 머리 (접히면 다시 위 머리글로)
   const wide=matchMedia('(min-width:1101px)').matches,hd=$('header'),pills=$('#pills');
   if(wide&&!S.hl)$('#phL').append($('.brand'),$('#tglL'));else{hd.insertBefore($('.brand'),pills);hd.insertBefore($('#tglL'),pills)}
   if(wide&&!S.hr)$('#phR').append($('#tglR'),$('.hbtns'));else{hd.append($('.hbtns'));$('.hbtns').prepend($('#tglR'))}
 }
-function setPanels(){placeHead();$('#edgeL').innerHTML=ic(S.hl?'chevR':'chevL');$('#edgeR').innerHTML=ic(S.hr?'chevL':'chevR');document.body.classList.toggle('hl',S.hl);document.body.classList.toggle('hr',S.hr);$('#tglL').classList.toggle('on',!S.hl);$('#tglR').classList.toggle('on',!S.hr);store.set('panels',{hl:S.hl,hr:S.hr});setTimeout(()=>{if(S.cv!=='grid')renderViewer()},200)}
+function syncTools(){const vt=$('#vtools');if(!vt)return;vt.hidden=!S.doc||S.cv==='grid';vt.style.setProperty('--vt-top',($('.vbar').offsetHeight+10)+'px')}
+function setPanels(){placeHead();document.body.classList.toggle('hl',S.hl);document.body.classList.toggle('hr',S.hr);$('#tglL').classList.toggle('on',!S.hl);$('#tglR').classList.toggle('on',!S.hr);store.set('panels',{hl:S.hl,hr:S.hr});setTimeout(()=>{if(S.cv!=='grid')renderViewer()},200)}
 async function openDoc(id,page=0,fromHelper=false){
   S.doc=await api('/api/docs/'+id);S.page=Math.min(page,S.doc.pages.length-1);S.sel=-1;S.rf=null;S.copied=new Set();
   if(!fromHelper)syncSelect();
@@ -1686,7 +1711,7 @@ async function processDocs(ids){
 
 /* ---------- 영역 선택 → 글자 복사 ---------- */
 const SEL={drag:null,box:null,key:null,space:false,line:null};
-S.autoCopy=store.get('autoCopy',false);S.popPos=store.get('popPos',null);S.popMini=store.get('popMini',false);
+S.autoCopy=store.get('autoCopy',false);try{localStorage.removeItem('iuxocr.popPos')}catch(e){}S.popMini=store.get('popMini',false);
 S.dv=store.get('dv','list');S.cv=store.get('cv','viewer');S.gs=store.get('gs',170);S.fold=new Set(store.get('fold',[]));{const pn=store.get('panels',{});S.hl=!!pn.hl;S.hr=!!pn.hr}
 S.polish=Object.assign({space:false,nospace:false,oneline:false,others:false,othersLen:10,othersUnit:'명'},store.get('polish',{}));
 /* 복사할 때 다듬기 — 인식 결과는 그대로 두고 복사되는 글만 바꾼다 */
@@ -1743,7 +1768,7 @@ function showSelPop(text,label){
   const vals=S.doc?.fields?.values||[];
   const P=S.polish;
   pop.classList.toggle('mini',!!S.popMini);
-  pop.innerHTML=`<div class="hd" title="끌어서 옮기기 — 옮긴 자리는 다음에도 그대로">${ic('grip','grip')}${ic('copy')}<span class="ttl">${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="minitx">${text?esc(text.replace(/\s+/g,' ')):''}</span><span class="sp"></span><label class="autocp" title="켜면 박스·줄을 클릭만 해도 바로 복사"><input type="checkbox" id="spAuto" ${S.autoCopy?'checked':''}>자동 복사</label>${S.popPos?`<button class="btn icon sm ghost" id="spPin" title="옮긴 자리 풀기 (선택한 곳 옆에 다시 띄우기)">${ic('pinOff')}</button>`:''}<button class="btn icon sm ghost" id="spMin" title="${S.popMini?'펼치기':'접기 (제목만 남기기)'}">${ic(S.popMini?'chevD':'chevU')}</button><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
+  pop.innerHTML=`<div class="hd" title="끌어서 잠깐 옮기기">${ic('grip','grip')}${ic('copy')}<span class="ttl">${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="minitx">${text?esc(text.replace(/\s+/g,' ')):''}</span><span class="sp"></span><label class="autocp" title="켜면 박스·줄을 클릭만 해도 바로 복사"><input type="checkbox" id="spAuto" ${S.autoCopy?'checked':''}>자동 복사</label><button class="btn icon sm ghost" id="spMin" title="${S.popMini?'펼치기':'접기 (제목만 남기기)'}">${ic(S.popMini?'chevD':'chevU')}</button><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
     <div class="bd">
     ${label?`<div class="sub" title="${esc(label)}">${esc(label)}</div>`:''}
     ${text===null?`<div class="placeholder" style="padding:14px">${ic('loader','spin')} 인식 중…</div>`:`<textarea id="spText" spellcheck="false">${esc(text)}</textarea>`}
@@ -1757,27 +1782,17 @@ function showSelPop(text,label){
     <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div></div>`;
   pop.hidden=false;
   bindPopUi(pop,v);
-  if(S.popPos&&!matchMedia('(max-width:760px)').matches){ // 사용자가 옮겨 둔 자리 (보이는 화면 기준)
-    pop.style.left=Math.max(v.scrollLeft+4,Math.min(v.scrollLeft+S.popPos.x,v.scrollLeft+v.clientWidth-pop.offsetWidth-4))+'px';
-    pop.style.top=Math.max(v.scrollTop+4,Math.min(v.scrollTop+S.popPos.y,v.scrollTop+v.clientHeight-pop.offsetHeight-4))+'px';
-  }else{
-  const L=st.offsetLeft,T_=st.offsetTop,W=st.offsetWidth,H=st.offsetHeight;
+  {const L=st.offsetLeft,T_=st.offsetTop,W=st.offsetWidth,H=st.offsetHeight;
   const PW=pop.offsetWidth,PH=pop.offsetHeight,vL=v.scrollLeft,vR=vL+v.clientWidth,vT=v.scrollTop,vB=vT+v.clientHeight;
-  let left,top;
-  // 문서 옆 여백에 띄워 다른 줄 박스를 가리지 않게 (여백이 없으면 선택 아래/위)
-  if(L+W+12+PW<=vR-8)left=L+W+12;else if(L-12-PW>=vL+8)left=L-12-PW;
-  if(left!=null){top=Math.max(vT+8,Math.min(T_+b[1]*H-10,vB-PH-8))}
-  else{
-    // 여백이 없으면 선택 위쪽 우선(아래 줄을 이어서 클릭할 수 있게), 자리가 없으면 아래
-    left=Math.max(vL+8,Math.min(L+b[0]*W,vR-PW-12));top=T_+b[1]*H-PH-8;
-    if(top<vT+8){ // 위에도 자리가 없으면 화면 오른쪽 아래 구석, 그게 선택을 가리면 선택 아래
-      left=vR-PW-14;top=vB-PH-14;
-      const bx0=L+b[0]*W,bx1=L+b[2]*W,by0=T_+b[1]*H,by1=T_+b[3]*H;
-      if(left<bx1&&left+PW>bx0&&top<by1&&top+PH>by0){left=Math.max(vL+8,Math.min(bx0,vR-PW-12));top=by1+8}
-    }
+  const bx0=L+b[0]*W,bx1=L+b[2]*W,by0=T_+b[1]*H,by1=T_+b[3]*H;
+  let left=Math.max(vL+8,Math.min(bx0,vR-PW-8)),top;
+  if(by1+8+PH<=vB-8)top=by1+8;                 // 선택한 글자 바로 아래
+  else if(by0-8-PH>=vT+8)top=by0-8-PH;          // 아래 자리가 없으면 위
+  else{                                         // 위아래 모두 없으면 옆
+    left=bx1+12+PW<=vR-8?bx1+12:Math.max(vL+8,bx0-12-PW);
+    top=Math.max(vT+8,Math.min(by0,vB-PH-8));
   }
-  pop.style.left=left+'px';pop.style.top=top+'px';
-  }
+  pop.style.left=left+'px';pop.style.top=top+'px';}
   $('#spX').onclick=hideSel;
   $('#spAuto').onchange=e=>setAutoCopy(e.target.checked,true);
   $('#spRe').onclick=()=>{SEL.line=null;regionOcr(b,'이 영역 인식')};
@@ -1794,7 +1809,6 @@ function showSelPop(text,label){
 /* 선택 팝업: 머리글을 끌어 옮기기 · 접기 · 옮긴 자리 풀기 */
 function bindPopUi(pop,v){
   $('#spMin').onclick=()=>{S.popMini=!S.popMini;store.set('popMini',S.popMini);pop.classList.toggle('mini',S.popMini);$('#spMin').innerHTML=ic(S.popMini?'chevD':'chevU');$('#spMin').title=S.popMini?'펼치기':'접기 (제목만 남기기)'};
-  $('#spPin')&&($('#spPin').onclick=()=>{S.popPos=null;store.set('popPos',null);if(SEL.box)showSelPop($('#spText')?.value??null,$('#selPop .sub')?.textContent||'')});
   const hd=pop.querySelector('.hd');
   hd.onpointerdown=e=>{
     if(e.button!==0||e.target.closest('button,input,label,select')||matchMedia('(max-width:760px)').matches)return;
@@ -1802,8 +1816,7 @@ function bindPopUi(pop,v){
     const sx=e.clientX,sy=e.clientY,ox=pop.offsetLeft,oy=pop.offsetTop;pop.classList.add('dragging');hd.setPointerCapture(e.pointerId);
     hd.onpointermove=m=>{const x=Math.max(v.scrollLeft+2,Math.min(ox+m.clientX-sx,v.scrollLeft+v.clientWidth-pop.offsetWidth-2)),y=Math.max(v.scrollTop+2,Math.min(oy+m.clientY-sy,v.scrollTop+v.clientHeight-pop.offsetHeight-2));pop.style.left=x+'px';pop.style.top=y+'px'};
     hd.onpointerup=()=>{hd.onpointermove=hd.onpointerup=null;pop.classList.remove('dragging');
-      if(Math.abs(pop.offsetLeft-ox)+Math.abs(pop.offsetTop-oy)>4){S.popPos={x:pop.offsetLeft-v.scrollLeft,y:pop.offsetTop-v.scrollTop};store.set('popPos',S.popPos);
-        if(!$('#spPin')){$('#spMin').insertAdjacentHTML('beforebegin',`<button class="btn icon sm ghost" id="spPin" title="옮긴 자리 풀기 (선택한 곳 옆에 다시 띄우기)">${ic('pinOff')}</button>`);bindPopUi(pop,v)}}};
+};
   };
 }
 function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(polish(t),SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
@@ -2063,13 +2076,13 @@ function bindResponsive(){
 }
 
 /* ---------- 이벤트 ---------- */
-function renderAll(){$('#tblXlsx')&&($('#tblXlsx').onclick=e=>doExport('xlsx',e.currentTarget,true));renderThumbs();renderViewer();renderGrid();renderText();renderRefine();setRunning(S.running)}
+function renderAll(){setTimeout(syncTools);$('#tblXlsx')&&($('#tblXlsx').onclick=e=>doExport('xlsx',e.currentTarget,true));renderThumbs();renderViewer();renderGrid();renderText();renderRefine();setRunning(S.running)}
 function bind(){
   paintIcons();
   $('#tglL').innerHTML=ic('panelL');$('#tglR').innerHTML=ic('panelR');
   $$('#cvSeg button').forEach(b=>b.innerHTML=b.dataset.cv==='grid'?ic('grid')+'<span>썸네일</span>':ic('viewer')+'<span>뷰어</span>');
-  matchMedia('(min-width:1101px)').addEventListener('change',placeHead);
-  $('#tglL').onclick=$('#edgeL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=$('#edgeR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
+  matchMedia('(min-width:1101px)').addEventListener('change',placeHead);addEventListener('resize',syncTools);
+  $('#tglL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
   $$('#cvSeg button').forEach(b=>b.onclick=()=>setCv(b.dataset.cv));
   const gs=$('#gSize');gs.value=S.gs;gs.oninput=()=>{S.gs=+gs.value;store.set('gs',S.gs);$('#pgrid').style.setProperty('--gs',S.gs+'px')};gs.onchange=()=>renderGrid();
   $$('#dvSeg button').forEach(b=>b.onclick=()=>{S.dv=b.dataset.dv;store.set('dv',S.dv);renderDocList()});
@@ -2140,9 +2153,9 @@ function bind(){
     catch(e){toast(e.message,true)}
   };
   $('#bStop').onclick=()=>api('/api/batch/stop',{method:'POST'});
-  const theme=store.get('theme2','dark');document.documentElement.dataset.theme=theme;
+  const theme=store.get('theme3','light');document.documentElement.dataset.theme=theme;
   const setThemeIcon=()=>{const b=$('#btnTheme');b.innerHTML=ic(document.documentElement.dataset.theme==='dark'?'sun':'moon')};setThemeIcon();
-  $('#btnTheme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;store.set('theme2',t);setThemeIcon()};
+  $('#btnTheme').onclick=()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;store.set('theme3',t);setThemeIcon()};
   addEventListener('keydown',e=>{
     const typing=e.target.closest('input,textarea,select,[contenteditable]');
     if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();runThisPage();return}
