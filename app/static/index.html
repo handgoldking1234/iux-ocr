@@ -524,8 +524,15 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
 .vtools button{width:52px;padding:6px 2px 5px!important;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:3px!important;color:var(--text-2);font-size:10.5px!important;font-weight:700;white-space:nowrap}
 .vtools button svg{width:17px;height:17px}
 .vtools button:hover{background:var(--panel-2);color:var(--text)}
-.vtools button.on{background:var(--accent);color:var(--on-accent)}
-.vtools button.on:hover{background:#0b7f75;color:#fff}
+.vtools #toolSeg button.on{background:var(--accent);color:var(--on-accent)}
+.vtools #toolSeg button.on:hover{background:#0b7f75;color:#fff}
+.vtools #viewSeg button.on{background:var(--accent-2);color:var(--accent-ink)}
+[data-theme=light] .vtools #viewSeg button.on{color:var(--accent)}
+.vtools #boxToggle{position:relative}
+.vtools #boxToggle::after{content:'';position:absolute;top:6px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--line-2);box-shadow:0 0 0 2px var(--panel)}
+.vtools #boxToggle.on{background:none;color:var(--text)}
+.vtools #boxToggle.on::after{background:var(--accent)}
+.vtools #boxToggle:hover{background:var(--panel-2)}
 .vtools button:disabled{opacity:.35;cursor:not-allowed}
 @media (max-width:760px){
   .vtools{top:auto;bottom:10px;left:50%;transform:translateX(-50%);flex-direction:row;padding:4px;gap:4px}
