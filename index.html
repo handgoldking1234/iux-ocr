@@ -36,7 +36,8 @@ header{display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--
 .logo{width:28px;height:28px;border-radius:50%;background:var(--accent);display:grid;place-items:center;color:var(--on-accent)}
 .logo svg{width:17px;height:17px}
 .brand b{font-size:15px;font-weight:800;letter-spacing:-.02em}
-.brand span{color:var(--text-3);font-size:12px}
+.brand span{color:var(--text-3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.brand>div{min-width:0}.brand b{white-space:nowrap}
+.eng small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .pills{display:flex;gap:6px;flex:1;justify-content:flex-end;min-width:0}
 .pill{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:99px;border:1px solid var(--line);background:var(--panel-2);font-size:12px;color:var(--text-2)}
 .pill:hover{border-color:var(--line-2)}
@@ -519,7 +520,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
 /* ---------- 넓은 화면: 좌우 패널을 위아래 끝까지 (머리글은 가운데 칸 위에만) ---------- */
 .ph{display:none}
 @media (min-width:1101px){
-  .app{--lw:260px;--rw:440px;grid-template-columns:var(--lw) minmax(0,1fr) var(--rw);grid-template-rows:52px minmax(0,1fr);column-gap:8px;padding:8px;transition:grid-template-columns .18s}
+  .app{--lw:260px;--rw:var(--rwu,300px);grid-template-columns:var(--lw) minmax(0,1fr) var(--rw);grid-template-rows:52px minmax(0,1fr);column-gap:8px;padding:8px;transition:grid-template-columns .18s}
   body.hl .app{--lw:0px}body.hr .app{--rw:0px}
   body.hl .app{column-gap:8px}
   main{display:contents}
@@ -533,7 +534,9 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
   aside.right .ph{padding:0 12px 0 10px}
   aside.right .ph .hbtns{margin-left:auto;display:flex;gap:6px}
 }
-@media (min-width:1101px) and (max-width:1440px){.app{--lw:230px;--rw:400px}}
+@media (min-width:1101px) and (max-width:1440px){.app{--lw:230px;--rw:var(--rwu,280px)}}
+.rsz{display:none}
+@media (min-width:1101px){.rsz{display:block;position:absolute;left:-8px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:20}.rsz:hover,.rsz.on{background:linear-gradient(90deg,transparent 3px,var(--accent) 3px,var(--accent) 5px,transparent 5px)}aside.right{position:relative;overflow:visible!important}body.hr .rsz{display:none}body.rszing,body.rszing *{cursor:col-resize!important;user-select:none}body.rszing .app{transition:none}}
 
 /* ---------- 뷰어 왼쪽 세로 도구막대 ---------- */
 .vtools{position:absolute;left:10px;top:var(--vt-top,60px);z-index:7;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
@@ -668,7 +671,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
       </div>
     </section>
 
-    <aside class="right"><div class="ph" id="phR"></div>
+    <aside class="right"><div class="rsz" id="rsz" title="끌어서 오른쪽 패널 폭 조절 (두 번 누르면 기본 폭)"></div><div class="ph" id="phR"></div>
       <div class="ocrbox">
         <div class="row stack"><span class="lbl">엔진</span>
           <div class="eng" id="engSel">
@@ -2158,7 +2161,14 @@ function bind(){
   paintIcons();
   $('#tglL').innerHTML=ic('panelL');$('#tglR').innerHTML=ic('panelR');
   $$('#cvSeg button').forEach(b=>b.innerHTML=b.dataset.cv==='grid'?ic('grid')+'<span>썸네일</span>':ic('viewer')+'<span>뷰어</span>');
-  matchMedia('(min-width:1101px)').addEventListener('change',placeHead);addEventListener('resize',syncTools);
+  matchMedia('(min-width:1101px)').addEventListener('change',placeHead);
+  { // 오른쪽 패널 폭: 기본은 왼쪽 패널 정도, 경계를 끌어 넓히기 (기억)
+    const app=$('.app'),rz=$('#rsz'),setW=w=>{if(w)app.style.setProperty('--rwu',w+'px');else app.style.removeProperty('--rwu')};setW(store.get('rw',0));
+    rz.onpointerdown=e=>{e.preventDefault();rz.setPointerCapture(e.pointerId);rz.classList.add('on');document.body.classList.add('rszing');
+      rz.onpointermove=m=>{const w=Math.max(260,Math.min(innerWidth*0.5,innerWidth-m.clientX-8));setW(Math.round(w))};
+      rz.onpointerup=()=>{rz.onpointermove=rz.onpointerup=null;rz.classList.remove('on');document.body.classList.remove('rszing');store.set('rw',parseInt(app.style.getPropertyValue('--rwu'))||0);syncTools()}};
+    rz.ondblclick=()=>{setW(0);store.set('rw',0)};
+  }addEventListener('resize',syncTools);
   $('#tglL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
   $$('#cvSeg button').forEach(b=>b.onclick=()=>setCv(b.dataset.cv));
   const gs=$('#gSize');gs.value=S.gs;gs.oninput=()=>{S.gs=+gs.value;store.set('gs',S.gs);const g=$('#pgrid');g.style.setProperty('--gs',S.gs+'px');g.classList.toggle('one',S.gs*2+14>g.clientWidth-32)};gs.onchange=()=>renderGrid();
