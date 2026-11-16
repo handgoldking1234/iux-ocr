@@ -627,11 +627,11 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
         <button class="btn icon sm ghost" id="rotR" data-ic="rotr" title="오른쪽으로 90° 돌리기 (Shift+클릭: 문서 모든 쪽)"></button>
         <div class="tiltw"><button class="btn sm ghost" id="tiltBtn" data-ic="ruler" title="조금씩 기울기 맞추기 (0.1° 단위)">기울기</button>
           <div class="tiltpop" id="tiltPop" hidden>
-            <div class="th"><b>기울기 맞추기</b><span class="muted">미리 보면서 맞춘 뒤 적용</span></div>
+            <div class="th"><b>기울기 맞추기</b><span class="muted" id="tiltPg">이 쪽만 · 미리 보면서 맞춘 뒤 적용</span></div>
             <div class="tr"><button class="btn icon sm" data-td="-1" title="-1°">−1</button><button class="btn icon sm" data-td="-0.1" title="-0.1°">−.1</button>
               <input type="range" id="tiltR" min="-20" max="20" step="0.1" value="0"><button class="btn icon sm" data-td="0.1" title="+0.1°">+.1</button><button class="btn icon sm" data-td="1" title="+1°">+1</button></div>
             <div class="tr"><input type="number" id="tiltN" min="-45" max="45" step="0.1" value="0"><span>° (＋ 시계 방향)</span><span style="flex:1"></span><label class="muted"><input type="checkbox" id="tiltGrid" checked>격자</label></div>
-            <div class="tr"><button class="btn sm" id="tiltAuto" title="글줄을 보고 자동으로 맞출 각도 찾기">자동 찾기</button><span style="flex:1"></span><button class="btn sm ghost" id="tiltX">취소</button><button class="btn sm primary" id="tiltOk">적용</button></div>
+            <div class="tr"><button class="btn sm" id="tiltAuto" title="글줄을 보고 자동으로 맞출 각도 찾기">자동 찾기</button><span style="flex:1"></span><button class="btn sm ghost" id="tiltX">취소</button><button class="btn sm primary" id="tiltOk" title="지금 보고 있는 쪽만 돌립니다">이 쪽에 적용</button></div>
           </div></div>
         <span class="name" id="vName"></span>
       </div>
@@ -1189,7 +1189,9 @@ function setThumbRunning(i){const el=$(`#thumbs .th[data-i="${i}"]`);if(!el)retu
 function gotoPage(i){if(!S.doc)return;S.page=Math.max(0,Math.min(S.doc.pages.length-1,i));S.sel=-1;S.view=curPage()?.result?.pre?'proc':'image';renderAll();$(`#thumbs .th[data-i="${S.page}"]`)?.scrollIntoView({block:'nearest'})}
 
 /* ---------- 뷰어 ---------- */
+const TILT={};
 function renderViewer(){
+  if(!$('#tiltPop').hidden&&+$('#tiltPop').dataset.page!==S.page)TILT.reset?.(); // 기울기 미리보기는 그 쪽 것 — 쪽을 넘기면 0부터
   if(SEL.key&&SEL.key!==selKey())hideSel();
   const p=curPage();
   const pvSrc=p?.pending?pageThumb(S.doc.id,p,S.page):null; // 불러오기 전 쪽도 내 PC 원본을 뷰어에 띄워 선택툴로 바로 인식
@@ -2257,7 +2259,9 @@ function bind(){
   // 조금씩 기울기 맞춤: 뷰어에서 미리 돌려 보고 적용
   const tp=$('#tiltPop'),setT=v=>{v=Math.max(-45,Math.min(45,Math.round(v*10)/10));$('#tiltR').value=v;$('#tiltN').value=v;$('#pimg').style.transform=v?`rotate(${v}deg)`:'';$('#overlay').style.visibility=v?'hidden':'';$('#stage').classList.toggle('tiltgrid',$('#tiltGrid').checked)};
   const closeT=()=>{tp.hidden=true;setT(0);$('#stage').classList.remove('tiltgrid')};
-  $('#tiltBtn').onclick=()=>{if(!S.doc)return;if(tp.hidden){if(S.cv==='grid')setCv('viewer');tp.hidden=false;const r=$('#tiltBtn').getBoundingClientRect();tp.style.top=(r.bottom+8)+'px';tp.style.left=Math.max(8,Math.min(r.left,innerWidth-tp.offsetWidth-8))+'px';setT(0)}else closeT()};
+  const tiltFor=()=>{tp.dataset.page=S.page;$('#tiltPg').textContent=`${S.page+1}쪽만 · 미리 보면서 맞춘 뒤 적용`};
+  TILT.reset=()=>{tiltFor();setT(0)};
+  $('#tiltBtn').onclick=()=>{if(!S.doc)return;if(tp.hidden){if(S.cv==='grid')setCv('viewer');tp.hidden=false;tiltFor();const r=$('#tiltBtn').getBoundingClientRect();tp.style.top=(r.bottom+8)+'px';tp.style.left=Math.max(8,Math.min(r.left,innerWidth-tp.offsetWidth-8))+'px';setT(0)}else closeT()};
   $('#tiltR').oninput=e=>setT(+e.target.value);$('#tiltN').oninput=e=>setT(+e.target.value||0);$('#tiltGrid').onchange=()=>setT(+$('#tiltN').value);
   $$('#tiltPop [data-td]').forEach(b=>b.onclick=()=>setT(+$('#tiltN').value+(+b.dataset.td)));
   $('#tiltX').onclick=closeT;
@@ -2265,7 +2269,7 @@ function bind(){
     let best=0,bv=-1;const g=c.getContext('2d').getImageData(0,0,c.width,c.height).data,W=c.width,H=c.height,ink=[];for(let y=0;y<H;y+=2)for(let x=0;x<W;x+=2){const k=(y*W+x)*4;if(g[k]+g[k+1]+g[k+2]<360)ink.push(x,y)}
     for(let a=-15;a<=15;a+=0.2){const r=a*Math.PI/180,sn=Math.sin(r),cs=Math.cos(r),bins=new Float32Array(H*2);for(let k=0;k<ink.length;k+=2){const yy=Math.round(ink[k+1]*cs-ink[k]*sn+H/2);if(yy>=0&&yy<bins.length)bins[yy]++}let v=0;for(const b of bins)v+=b*b;if(v>bv){bv=v;best=a}}
     setT(-best);toast(`${-Math.round(best*10)/10}°로 맞췄습니다 — 확인 후 적용`)}catch(e){toast('자동 찾기를 못 했습니다',true)}};
-  $('#tiltOk').onclick=async()=>{const v=+$('#tiltN').value;if(!v){closeT();return}const keep=S.page;closeT();await rot((v+360)%360,false);S.page=keep};
+  $('#tiltOk').onclick=async()=>{const v=+$('#tiltN').value;if(!v){closeT();return}const keep=+tp.dataset.page;closeT();if(S.page!==keep)return;await rot((v+360)%360,false);S.page=keep};
   $('#zIn').onclick=()=>zoomBy(1.2);$('#zOut').onclick=()=>zoomBy(1/1.2);$('#zFit').onclick=()=>{S.zoom=null;applyZoom()};
   $('#viewer').addEventListener('wheel',e=>{if(!(e.ctrlKey||e.metaKey))return;e.preventDefault();
     if(S.cv==='grid'){ // 썸네일 보기: Ctrl+휠로 썸네일 크기 (마우스 아래 썸네일이 제자리에 남게)
