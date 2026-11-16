@@ -361,7 +361,8 @@ table.ot td.low{background:#fff4e5}
 .selpop .pol label:has(input:checked){border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
 .selpop .pol input[type=checkbox]{margin:0;accent-color:var(--accent)}
 .selpop .pol input[type=number]{width:38px;height:20px;border:1px solid var(--line);border-radius:5px;font-size:11.5px;padding:0 3px;background:var(--panel)}
-.selpop .prev{font-size:12px;padding:6px 8px;border-radius:7px;background:var(--bg-2);white-space:pre-wrap;word-break:break-all;max-height:90px;overflow:auto}
+.selpop .prev{font-size:12px;padding:6px 8px;border-radius:7px;background:var(--bg-2);white-space:pre-wrap;word-break:break-all;max-height:40vh;overflow:auto}
+.selpop.wide{width:480px}
 .selpop .prev b{color:var(--accent);font-size:11px;margin-right:4px}
 .selpop .hd .sp{flex:1}
 .selpop .hd{cursor:move;user-select:none;touch-action:none;margin:-4px -4px 0;padding:2px 2px 2px 0;border-radius:8px}
@@ -372,7 +373,7 @@ table.ot td.low{background:#fff4e5}
 .selpop .minitx{display:none;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;max-width:150px}
 .selpop.mini{padding:6px 8px;gap:0}.selpop.mini .bd,.selpop.mini .sub{display:none}.selpop.mini .minitx{display:block}.selpop.mini .ttl{display:none}
 .selpop.dragging{opacity:.92;box-shadow:0 20px 44px rgba(0,0,0,.3)}
-.selpop textarea{width:100%;min-height:64px;max-height:220px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;line-height:1.55;resize:vertical;background:var(--panel);outline:none}
+.selpop textarea{width:100%;min-height:44px;max-height:none;overflow-y:hidden;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;line-height:1.55;resize:vertical;background:var(--panel);outline:none}
 .selpop textarea:focus{border-color:var(--accent)}
 .selpop .row{gap:6px;flex-wrap:wrap}
 .selpop select{flex:1;height:28px;font-size:12px}
@@ -432,7 +433,7 @@ table.ot td.low{background:#fff4e5}
 .vbar::-webkit-scrollbar{height:4px}.vbar::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px}
 .only-narrow,#mnav,#drawerBg{display:none}
 .selpop{max-width:calc(100vw - 24px)}
-@media (max-width:760px){.selpop{position:fixed;left:8px!important;right:8px;top:auto!important;bottom:calc(62px + env(safe-area-inset-bottom));width:auto;max-width:none;max-height:58vh;overflow:auto;z-index:40}.selpop .hd{cursor:default}.selpop .hd .grip{display:none}.selpop .minitx{max-width:none;flex:1}}
+@media (max-width:760px){.selpop,.selpop.wide{position:fixed;left:8px!important;right:8px;top:auto!important;bottom:calc(62px + env(safe-area-inset-bottom));width:auto;max-width:none;max-height:58vh;overflow:auto;z-index:40}.selpop .hd{cursor:default}.selpop .hd .grip{display:none}.selpop .minitx{max-width:none;flex:1}}
 @media (max-width:1600px){
   #toolSeg button,.seg #boxToggle,#rotAuto{font-size:0;gap:0}
   #toolSeg button svg,.seg #boxToggle svg{width:15px!important;height:15px!important}
@@ -1819,6 +1820,10 @@ const selKey=()=>S.doc?`${S.doc.id}/${S.page}`:null;
 function setTool(t){S.tool=t;store.set('tool',t);$$('#toolSeg button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t));$('#viewer').classList.toggle('selmode',t==='select');$('#viewer').classList.toggle('panmode',t==='pan');$('#pgrid')?.classList.toggle('selmode',t==='select')}
 function stagePt(e){const r=$('#stage').getBoundingClientRect();return[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]}
 function drawSelRect(b){const el=$('#selRect');el.hidden=false;el.style.left=b[0]*100+'%';el.style.top=b[1]*100+'%';el.style.width=(b[2]-b[0])*100+'%';el.style.height=(b[3]-b[1])*100+'%'}
+// 선택 팝업 글상자: 글 길이만큼 늘려서 웬만하면 스크롤 없이 (화면 높이의 60%까지)
+function fitSpText(){const ta=$('#spText');if(!ta)return;const v=$('#viewer');
+  const lim=Math.max(140,Math.round((innerWidth<=760?innerHeight*.32:(v?.clientHeight||innerHeight)*.6)));
+  ta.style.height='auto';const h=ta.scrollHeight+2;ta.style.height=Math.min(h,lim)+'px';ta.style.overflowY=h>lim?'auto':'hidden'}
 function hideSel(){SEL.box=null;SEL.key=null;SEL.line=null;SEL.grect=null;$('#selRect').hidden=true;$('#selPop').hidden=true;$$('#pgrid .gsel').forEach(e=>e.remove())}
 /* 선택 영역에 걸친 인식 줄 찾기. 줄의 일부만 잘렸으면 null(→ 영역 다시 인식) */
 function linesInBox(b){
@@ -1875,7 +1880,9 @@ function showSelPop(text,label){
     </div><div class="prev" id="spPrev" hidden></div>`}
     <div class="row"><button class="btn sm primary" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 (Ctrl+C)</button><button class="btn sm" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button>${SEL.line!=null?'<span class="muted" style="font-size:11px;align-self:center">고치면 오른쪽 텍스트에도 반영</span>':''}</div>
     <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div></div>`;
+  pop.classList.toggle('wide',!!text&&(text.includes('\n')||text.length>60)); // 여러 줄·긴 글은 넓게
   pop.hidden=false;
+  fitSpText();
   bindPopUi(pop,v);
   if(S.cv==='grid'&&SEL.grect){ // 썸네일 보기: 고른 썸네일 영역 바로 아래(없으면 위·옆)
     const vr=v.getBoundingClientRect(),r=SEL.grect,PW=pop.offsetWidth,PH=pop.offsetHeight,VW=v.clientWidth,VH=v.clientHeight;
@@ -1903,7 +1910,7 @@ function showSelPop(text,label){
   $$('#selPop [data-pol]').forEach(c=>c.onchange=()=>{S.polish[c.dataset.pol]=c.checked;if(c.dataset.pol==='space'&&c.checked)S.polish.nospace=false;if(c.dataset.pol==='nospace'&&c.checked)S.polish.space=false;$$('#selPop [data-pol]').forEach(x=>x.checked=!!S.polish[x.dataset.pol]);const hb=$('#selPop [data-hzb]');if(hb)hb.hidden=!S.polish.hz;syncHz();store.set('polish',S.polish);prev();if(S.autoCopy)copySel()});
   $('#spOthN')&&($('#spOthN').oninput=e=>{S.polish.othersLen=Math.max(1,+e.target.value||10);store.set('polish',S.polish);prev()});
   $('#spOthU')&&($('#spOthU').onchange=e=>{S.polish.othersUnit=e.target.value;store.set('polish',S.polish);prev()});
-  $('#spText')?.addEventListener('input',prev);prev();
+  $('#spText')?.addEventListener('input',()=>{prev();fitSpText()});prev();
   $('#spField').onchange=e=>putSelIntoField(e.target.value);
   $('#spText')?.addEventListener('keydown',e=>{if(e.key==='Escape')hideSel()});
 }
