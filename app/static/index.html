@@ -1793,18 +1793,21 @@ function hz2ko(text,mode){ // mode: 'ko' = 한글로, 'both' = 한글(漢字)
 function syncHz(){const h=$('#hzTog');if(h&&h.checked!==!!S.polish.hz)renderText()}
 function polish(t){
   const P=S.polish;if(t==null)return t;let s=String(t);
-  if(P.hz)s=hz2ko(s,P.hzBoth?'both':'ko');
   if(P.oneline)s=s.replace(/\s*\n+\s*/g,' ');
   if(P.nospace)s=s.split('\n').map(l=>l.replace(/[ \t\u3000]+/g,'')).join('\n');
   else if(P.space)s=s.split('\n').map(l=>{
     const tk=l.trim().split(/[ \t\u3000]+/).filter(Boolean),out=[];
     for(const w of tk){const last=out[out.length-1];
       // 한 글자씩 벌어진 글(출 석 부)은 붙인다. 숫자·영문 한 글자는 그대로
-      if(last!=null&&/^[가-힣]$/.test(w)&&/^[가-힣]+$/.test(last)&&last._s)out[out.length-1]=Object.assign(new String(last+w),{_s:true});
-      else out.push(/^[가-힣]$/.test(w)?Object.assign(new String(w),{_s:true}):w)}
+      // 한자도 같은 규칙 (任 用 狀 → 任用狀). 한글 낱자와 한자 낱자는 서로 붙이지 않음
+      const one=c=>/^[가-힣]$/.test(c)?'k':/^[\u3400-\u9fff\uf900-\ufaff]$/.test(c)?'h':'';
+      const k=one(w);
+      if(last!=null&&k&&last._s===k)out[out.length-1]=Object.assign(new String(last+w),{_s:k});
+      else out.push(k?Object.assign(new String(w),{_s:k}):w)}
     return out.map(String).join(' ').replace(/\s+([,.)\]:;!?])/g,'$1').replace(/([(\[])\s+/g,'$1')
       .replace(/([0-9A-Za-z])([-@/]) +(?=[0-9A-Za-z])/g,'$1$2') // 02- 123 → 02-123, hong@ gongform → hong@gongform
       .replace(/(\d) ([년월일개명건원층호반차회])(?=$|[\s,.)])/g,'$1$2')}).join('\n'); // 1 반 → 1반
+  if(P.hz)s=hz2ko(s,P.hzBoth?'both':'ko'); // 띄어쓰기 정리 뒤에 바꿔야 法 律 → 법률 (법율 X)
   if(P.others){
     s=s.split('\n').map(l=>{const it=l.split(/\s*[,，、]\s*/).map(x=>x.trim()).filter(Boolean);
       return it.length>=2&&l.replace(/\s/g,'').length>P.othersLen?`${it[0]} 외 ${it.length-1}${P.othersUnit}`:l}).join('\n');
@@ -1863,7 +1866,7 @@ function showSelPop(text,label){
     ${label?`<div class="sub" title="${esc(label)}">${esc(label)}</div>`:''}
     ${text===null?`<div class="placeholder" style="padding:14px">${ic('loader','spin')} 인식 중…</div>`:`<textarea id="spText" spellcheck="false">${esc(text)}</textarea>`}
     ${text===null?'':`<div class="pol" title="복사할 때 글자를 다듬습니다 (원본 인식 결과는 그대로)">
-      <label title="출 석 부 → 출석부 · 두 칸 이상 띄어쓰기 → 한 칸"><input type="checkbox" data-pol="space" ${P.space?'checked':''}>띄어쓰기 정리</label>
+      <label title="출 석 부 → 출석부 · 任 用 狀 → 任用狀 · 두 칸 이상 띄어쓰기 → 한 칸"><input type="checkbox" data-pol="space" ${P.space?'checked':''}>띄어쓰기 정리</label>
       <label title="띄어쓰기를 모두 없애고 붙여서"><input type="checkbox" data-pol="nospace" ${P.nospace?'checked':''}>붙여 쓰기</label>
       <label title="여러 줄을 한 줄로 이어서"><input type="checkbox" data-pol="oneline" ${P.oneline?'checked':''}>한 줄로</label>
       <label title="한자를 한글 음으로 (徐海萬 → 서해만, 李 → 이)"><input type="checkbox" data-pol="hz" ${P.hz?'checked':''}>한자→한글</label>
