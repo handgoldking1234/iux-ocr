@@ -279,6 +279,8 @@ class PageUpdate(BaseModel):
     text: str
     lines: list[dict] | None = None
     tables: list[dict] | None = None
+    engine: str | None = None  # 'json' = 다른 AI 결과를 불러와 넣음 (손으로 고친 것 아님)
+    mean_conf: float | None = None
 
 
 class RefineReq(BaseModel):
@@ -777,6 +779,10 @@ def api_page_update(doc_id: str, idx: int, upd: PageUpdate):
         if upd.tables is not None:
             r["tables"] = upd.tables
         r["edited"] = True
+        if upd.engine:
+            r = {"engine": upd.engine, "lines": r.get("lines", []), "tables": r.get("tables") or [], "text": upd.text,
+                 "mean_conf": upd.mean_conf, "time_ms": 0, "at": time.time()}
+            p.pop("pdf_text", None)
         p["result"] = r
         save_doc(doc)
     return p

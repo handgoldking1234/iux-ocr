@@ -633,7 +633,9 @@ function trimEdgeFragments(x, ox, oy, w, h) {
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/pages\/(\d+)$/))) {
       const d = await getDoc(m[1]), pg = d.pages[+m[2]];
       const r = pg.result || { engine: 'manual', lines: [], mean_conf: null };
-      r.text = body.text; if (body.lines) r.lines = body.lines; if (body.tables) r.tables = body.tables; r.edited = true; pg.result = r; await putDoc(d); return pg;
+      r.text = body.text; if (body.lines) r.lines = body.lines; if (body.tables) r.tables = body.tables; r.edited = true;
+      if (body.engine) { Object.assign(r, { engine: body.engine, mean_conf: body.mean_conf ?? null, time_ms: 0, at: Date.now() / 1000 }); delete r.edited; delete pg.pdf_text; }
+      pg.result = r; await putDoc(d); return pg;
     }
     if ((m = p.match(/^\/api\/docs\/([a-f0-9]+)\/fields$/))) {
       const d = await getDoc(m[1]); d.fields = { ...body, at: Date.now() / 1000 }; await putDoc(d); return d.fields;

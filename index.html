@@ -601,7 +601,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
         <b>여기에 끌어다 놓기</b><small>이미지 · PDF · TIFF · 폴더째로도 가능</small>
         <div class="btns"><button class="btn" id="addFiles" data-ic="file">파일 추가</button><button class="btn" id="addFolder" data-ic="folder">폴더 추가</button></div>
         <div class="upbar" id="upbar" hidden><i></i></div>
-        <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf,.iuxocr" hidden>
+        <input type="file" id="file" multiple accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,.gif,.pdf,.json,.iuxocr" hidden>
         <input type="file" id="folder" webkitdirectory directory multiple hidden>
       </div>
       <div class="sec-h"><span>문서 <span id="docCount"></span></span><span class="acts"><span class="dvseg" id="dvSeg"><button data-dv="list" title="목록" data-ic="list"></button><button data-dv="icon" title="아이콘 (첫 쪽 미리보기)" data-ic="grid"></button><button data-dv="tree" title="폴더 (탐색기처럼)" data-ic="folder"></button></span><button class="btn ghost" id="delAllDocs" title="작업 목록 비우기">비우기</button></span></div>
@@ -1176,7 +1176,7 @@ function renderThumbs(){
   $('#thumbs').innerHTML=bar+S.doc.pages.map((p,i)=>{
     const r=p.result;let st='';const key=pkey(p);
     if(p.pending)st='<span class="st wait">대기</span>';
-    else if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':'AI')}</span>`}
+    else if(r){const low=r.mean_conf!=null&&r.mean_conf<80;st=`<span class="st ${low?'low':''}">${r.mean_conf!=null?Math.round(r.mean_conf):(r.engine==='pdf-text'?'TXT':r.engine==='json'?'JSON':'AI')}</span>`}
     const pt=pageThumb(S.doc.id,p,i);
     const body=pt?`<img loading="lazy" decoding="async" src="${pt}">`:`<div class="ph">${ic('image')}${esc(p.source||'')}</div>`;
     return `<div class="th ${i===S.page?'on':''} ${p.pending?'pending':''} ${S.pick.has(key)?'pick':''}" data-i="${i}" title="${esc(p.source||'')} (Ctrl·Shift+클릭: 여러 쪽 선택)">${body}<span class="no">${i+1}</span>${st}</div>`}).join('');
@@ -1253,7 +1253,7 @@ function renderStats(){
   const p=curPage(),r=p?.result;
   if(!r){$('#stats').innerHTML='';return}
   const low=r.lines.filter(l=>l.conf!=null&&l.conf<LOW).length;
-  const eng={tesseract:'Tesseract',iux:'IUX 엔진',paddle:'PaddleOCR','pdf-text':'PDF 내장 텍스트',manual:'직접 입력'}[r.engine]||r.engine.replace('ollama:','AI · ');
+  const eng={tesseract:'Tesseract',iux:'IUX 엔진',paddle:'PaddleOCR','pdf-text':'PDF 내장 텍스트',json:'JSON 결과(다른 AI)',manual:'직접 입력'}[r.engine]||r.engine.replace('ollama:','AI · ');
   $('#stats').innerHTML=`<span class="stat">엔진 <b>${esc(eng)}</b></span>`+
    (r.mean_conf!=null?`<span class="stat">평균 신뢰도 <b>${r.mean_conf}</b></span>`:'')+
    (low?`<span class="stat warn">확인 필요 <b>${low}줄</b></span>`:'')+
@@ -1721,6 +1721,83 @@ async function saveAutoAsTemplate(){
 const FILEREF={};            // 문서별 { 상대경로: File } — 아직 불러오지 않은 쪽의 원본
 const pkey=p=>p.key||String(p.index);
 S.pick=new Set();S.pickLast=null;S.autoConv=true; // 폴더는 항상 목록만 먼저 불러오고, 인식은 선택해서 버튼으로
+/* 여러 AI의 OCR JSON(네이버 클로바·구글·애저·업스테이지·PaddleOCR 등)을 형식에 상관없이 읽는다
+   → 쪽마다 {w,h,lines:[{text,box:[x0,y0,x1,y1],conf}]} (좌표가 없으면 글자만) */
+function parseOcrJson(root){
+  const TK=['inferText','text','content','description','transcription','value','word','line'],CK=['inferConfidence','confidence','conf','score','probability'];
+  const num=v=>typeof v==='number'&&isFinite(v);
+  const pts=a=>{if(!Array.isArray(a)||!a.length)return null;
+    if(a.every(num)){if(a.length>=8){const xs=a.filter((_,i)=>i%2===0),ys=a.filter((_,i)=>i%2);return[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]}
+      if(a.length===4)return a[2]>a[0]&&a[3]>a[1]?a.slice():[a[0],a[1],a[0]+a[2],a[1]+a[3]];return null}
+    const P=a.map(q=>Array.isArray(q)&&num(q[0])?[q[0],q[1]]:q&&num(q.x)?[q.x,q.y??0]:null).filter(Boolean);if(P.length<2)return null;
+    const xs=P.map(q=>q[0]),ys=P.map(q=>q[1]);return[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]};
+  const geom=o=>{for(const k of['boundingPoly','bounding_poly','boundingBox','bounding_box','bbox','box','polygon','points','vertices','coordinates','position','geometry','rect']){const v=o[k];if(v==null)continue;
+      if(Array.isArray(v)){const g=pts(v);if(g)return g}
+      else if(typeof v==='object'){const g=pts(v.vertices||v.normalizedVertices||v.points||v.polygon||v.coordinates||null);if(g)return g;
+        const L=v.left??v.x??v.x0,T=v.top??v.y??v.y0;if(num(L)&&num(T)){if(num(v.width))return[L,T,L+v.width,T+(v.height||0)];if(num(v.right))return[L,T,v.right,v.bottom];if(num(v.x1))return[L,T,v.x1,v.y1]}}}
+    if(num(o.left)&&num(o.top)&&num(o.width))return[o.left,o.top,o.left+o.width,o.top+(o.height||0)];return null};
+  const textOf=o=>{for(const k of TK)if(typeof o[k]==='string'&&o[k].trim())return o[k];
+    if(o.content&&typeof o.content==='object'&&typeof o.content.text==='string')return o.content.text;return null};
+  const confOf=o=>{for(const k of CK)if(num(o[k]))return o[k]<=1?Math.round(o[k]*100):Math.round(o[k]);return null};
+  const sizeOf=o=>{const c=o.convertedImageInfo||o.dimension||o.dimensions||o.size||o.image||o;const w=c.width??c.w,h=c.height??c.h;return num(w)&&num(h)&&w>1?{w,h,unit:o.unit||c.unit||''}:null};
+  const pages=[];let cur=null;
+  const pageAt=i=>pages[i]||(pages[i]={items:[],size:null,texts:[]});
+  const PAGEKEY=/^(pages|images|results|responses|readresults|read_results|page_results|pageresults|analyzeresult)$/i;
+  // PaddleOCR 결과: [[[x,y]×4],[글자,신뢰도]]
+  const paddle=a=>Array.isArray(a)&&a.length===2&&Array.isArray(a[0])&&a[0].length===4&&Array.isArray(a[0][0])&&Array.isArray(a[1])&&typeof a[1][0]==='string';
+  function walk(v,pg,depth){if(depth>40||v==null||typeof v!=='object')return 0;
+    if(Array.isArray(v)){let n=0;
+      if(v.length&&paddle(v[0])){for(const r of v)if(paddle(r)){pageAt(pg).items.push({text:r[0+1][0],box:pts(r[0]),conf:num(r[1][1])?Math.round(r[1][1]*100):null});n++}return n}
+      for(const x of v)n+=walk(x,pg,depth+1);return n}
+    let p2=pg;if(num(v.page)&&v.page>=1&&v.page<5000)p2=v.page-1;else if(num(v.pageNumber)&&v.pageNumber>=1)p2=v.pageNumber-1;else if(num(v.page_number)&&v.page_number>=1)p2=v.page_number-1;
+    const sz=sizeOf(v);if(sz&&!pageAt(p2).size&&(v.lines||v.words||v.fields||v.blocks||v.elements||v.paragraphs||v.convertedImageInfo||depth<=2))pageAt(p2).size=sz;
+    let inner=0;
+    for(const[k,c]of Object.entries(v)){if(c==null||typeof c!=='object')continue;
+      if(PAGEKEY.test(k)&&Array.isArray(c)&&c.length&&c.every(x=>x&&typeof x==='object'&&!Array.isArray(x))&&pages.length<=p2+1&&!pages.slice(p2+1).length){c.forEach((x,i)=>{inner+=walk(x,pg===p2&&p2===0?i:p2+i,depth+1)})}
+      else inner+=walk(c,p2,depth+1)}
+    const t=textOf(v);
+    if(t&&!inner){const g=geom(v);const cf=confOf(v);
+      if(g)pageAt(p2).items.push({text:t.replace(/<[^>]+>/g,' ').trim(),box:g,conf:cf});else pageAt(p2).texts.push(t.replace(/<[^>]+>/g,' ').trim());return g?1:0}
+    return inner}
+  walk(root,0,0);
+  return pages.map(pg=>{if(!pg)return null;
+    let its=pg.items.filter(x=>x.text&&x.box&&x.box[2]>x.box[0]);
+    // 전체 글을 한 덩어리로 둔 항목(구글 textAnnotations[0] 등)은 빼고 낱개만 쓴다
+    const inside=(b,c)=>{const cx=(c[0]+c[2])/2,cy=(c[1]+c[3])/2;return cx>=b[0]&&cx<=b[2]&&cy>=b[1]&&cy<=b[3]};
+    if(its.length>2)its=its.filter(x=>its.filter(y=>y!==x&&inside(x.box,y.box)&&(y.box[2]-y.box[0])*(y.box[3]-y.box[1])<(x.box[2]-x.box[0])*(x.box[3]-x.box[1])*.6).length<2);
+    if(!its.length)return{size:pg.size,lines:pg.texts.join('\n').split('\n').filter(t=>t.trim()).map(t=>({text:t.trim(),box:null,conf:null}))};
+    // 단어 → 줄 (세로로 반 이상 겹치면 같은 줄)
+    its.sort((a,b)=>(a.box[1]+a.box[3])-(b.box[1]+b.box[3]));const rows=[];
+    for(const it of its){const h=it.box[3]-it.box[1],cy=(it.box[1]+it.box[3])/2;
+      const r=rows.find(r=>{const ov=Math.min(r.y1,it.box[3])-Math.max(r.y0,it.box[1]);return ov>=0.5*Math.min(h,r.y1-r.y0)&&Math.abs(cy-(r.y0+r.y1)/2)<Math.max(h,r.y1-r.y0)*.6});
+      if(r){r.w.push(it);r.y0=Math.min(r.y0,it.box[1]);r.y1=Math.max(r.y1,it.box[3])}else rows.push({w:[it],y0:it.box[1],y1:it.box[3]})}
+    rows.sort((a,b)=>a.y0-b.y0);const lines=[];
+    for(const r of rows){r.w.sort((a,b)=>a.box[0]-b.box[0]);
+      // 같은 줄이라도 멀리 떨어지면 나눈다 (표·좌우 칸)
+      let seg=[r.w[0]];const H=r.y1-r.y0;
+      const flush=()=>{const xs=seg.map(x=>x.box);const cs=seg.map(x=>x.conf).filter(c=>c!=null);
+        lines.push({text:seg.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim(),box:[Math.min(...xs.map(b=>b[0])),Math.min(...xs.map(b=>b[1])),Math.max(...xs.map(b=>b[2])),Math.max(...xs.map(b=>b[3]))],conf:cs.length?Math.min(...cs):null})};
+      for(const w of r.w.slice(1)){if(w.box[0]-seg[seg.length-1].box[2]>H*3){flush();seg=[w]}else seg.push(w)}flush()}
+    return{size:pg.size,lines}}).filter(Boolean)}
+async function jsonPagesFor(path){const f=jsonFileFor(path);if(!f)return null;const k=f.name+'|'+f.size+'|'+f.lastModified;
+  if(!(k in JSONCACHE)){try{JSONCACHE[k]=parseOcrJson(JSON.parse(await f.text()))}catch(e){JSONCACHE[k]=null;toast(`${f.name}: JSON을 읽지 못했습니다`,true)}}
+  const r=JSONCACHE[k];return r&&r.length&&r.some(pg=>pg.lines.length)?r:null}
+/* JSON 한 쪽을 우리 쪽 크기에 맞춰 결과로 넣는다. 좌표 단위를 모르면 PDF 크기에 맞는 해상도(72·96·150·200·300dpi…)를 찾는다 */
+async function applyJsonPage(docId,i,page,jp){
+  const W=page.width||1,H=page.height||1,dpi=page.dpi||300;let sx,sy;
+  const bx=jp.lines.filter(l=>l.box),mx=Math.max(0,...bx.map(l=>l.box[2])),my=Math.max(0,...bx.map(l=>l.box[3]));
+  if(bx.length&&mx<=1.5&&my<=1.5){sx=W;sy=H}
+  else if(jp.size&&!/inch/i.test(jp.size.unit)){sx=W/jp.size.w;sy=H/jp.size.h}
+  else if(jp.size&&/inch/i.test(jp.size.unit)){sx=W/jp.size.w;sy=H/jp.size.h}
+  else if(!/\.pdf$/i.test(page.source||'')&&mx<=W*1.03&&my<=H*1.03){sx=sy=1} // 이미지는 보통 그 이미지 픽셀 좌표
+  else{ // PDF인데 크기 정보가 없으면: 내용이 들어가는 해상도 중 글 덩어리가 가운데에 가장 가까운 것
+    const nx=Math.min(...bx.map(l=>l.box[0]));let d=dpi,best=1e9;
+    for(const c of[72,96,100,144,150,200,240,300,400,600]){const w=W/dpi*c,h=H/dpi*c;if(mx>w*1.03||my>h*1.03)continue;const sc=Math.abs((nx+mx)/2/w-.5)+(mx/w<.35?.3:0);if(sc<best){best=sc;d=c}}
+    sx=sy=dpi/d}
+  const lines=jp.lines.map((l,k)=>{const o={text:l.text,conf:l.conf,block:0};
+    if(l.box){const[x0,y0,x1,y1]=l.box;o.box=[x0*sx/W,y0*sy/H,(x1-x0)*sx/W,(y1-y0)*sy/H].map(v=>Math.round(Math.max(0,v)*1e5)/1e5)}else o.box=null;return o});
+  const cs=lines.map(l=>l.conf).filter(c=>c!=null);
+  return api(`/api/docs/${docId}/pages/${i}`,{method:'PUT',json:{text:lines.map(l=>l.text).join('\n'),lines,tables:[],engine:'json',mean_conf:cs.length?Math.round(cs.reduce((a,b)=>a+b,0)/cs.length):null}})}
 async function processDoc(docId,onlyKeys,opt={}){
   if(S.running&&!opt.inner)return toast('이미 변환 중입니다',true);
   if(S.set.engine==='ollama'&&!S.set.vlm){toast('AI 비전 모델을 선택하세요',true);return}
@@ -1743,9 +1820,15 @@ async function processDoc(docId,onlyKeys,opt={}){
       catch(e){st.fails++;st.done++;if(st.fails<=3)toast(`${p.source}: ${e.message}`,true);continue}
       if(here()){S.doc=doc;renderThumbs()}
     }
-    for(const k of targets){
+    const jps=await jsonPagesFor(p.path||p.source),t0=p.pending?0:doc.pages.filter(q=>q.source===p.source).indexOf(p); // 바로 올린 여러 쪽 PDF는 몇 번째 쪽인지
+    for(const [t1,k] of targets.entries()){const t=t0+t1;
       if(S.stop)break;
-      const i=doc.pages.findIndex(q=>pkey(q)===k);if(i<0||(doc.pages[i].result&&!opt.redo))continue;
+      const i=doc.pages.findIndex(q=>pkey(q)===k);
+      if(i>=0&&jps&&jps[t]&&(!doc.pages[i].result||doc.pages[i].result.engine==='pdf-text')){ // 다른 AI의 JSON 결과를 그대로 넣기
+        try{const page=doc.pages[i];const r=await applyJsonPage(docId,i,page,jps[t]);doc.pages[i]=r;st.pages++;st.json=(st.json||0)+1;if(here()){S.doc.pages[i]=r;if(S.page===i)renderText();renderThumbs()}}
+        catch(e){st.fails++;if(st.fails<=3)toast(`${i+1}쪽 JSON: ${e.message}`,true)}
+        continue}
+      if(i<0||(doc.pages[i].result&&!opt.redo))continue;
       if(here()){S.page=i;S.sel=-1;S.view='image';renderViewer();renderText();setThumbRunning(i);$(`#thumbs .th[data-i="${i}"]`)?.scrollIntoView({block:'nearest'})}
       try{const pg=await api(`/api/docs/${docId}/ocr`,{json:ocrPayload(i)});doc.pages[i]=pg;st.pages++;if(pg.result?.pre?.rotate_fixed)st.rot++;
         if(here()){S.doc.pages[i]=pg;if(S.page===i){S.view='proc';renderViewer();renderText()}renderThumbs()}}
@@ -1760,14 +1843,19 @@ async function processDoc(docId,onlyKeys,opt={}){
   return st;
 }
 function finishMsg(st){
-  toast((S.stop?'중지했습니다 · ':'')+`${st.pages}쪽 변환 완료`+(st.rot?` · 돌아간 ${st.rot}쪽 바로 세움`:'')+(st.fails?` · 실패 ${st.fails}`:'')+(st.missing?` · 원본 연결 끊긴 파일 ${st.missing}개 (폴더 다시 선택 필요)`:''),!!(st.fails||st.missing)&&!st.pages);
+  toast((S.stop?'중지했습니다 · ':'')+`${st.pages}쪽 변환 완료`+(st.json?` (그중 ${st.json}쪽은 JSON 결과)`:'')+(st.rot?` · 돌아간 ${st.rot}쪽 바로 세움`:'')+(st.fails?` · 실패 ${st.fails}`:'')+(st.missing?` · 원본 연결 끊긴 파일 ${st.missing}개 (폴더 다시 선택 필요)`:''),!!(st.fails||st.missing)&&!st.pages);
 }
+async function jsonDocs(ids){ // 폴더를 불러오면 JSON 짝이 있는 쪽만 골라 결과를 채움 (OCR 안 함)
+  if(S.running)return;S.stop=false;setRunning(true,0);const tot={done:0,fails:0,rot:0,missing:0,pages:0,json:0};
+  const plan=[];let grand=0;for(const id of ids){const d=await api('/api/docs/'+id);const keys=d.pages.filter(p=>(p.pending||!p.result||p.result.engine==='pdf-text')&&jsonFileFor(p.path||p.source)).map(pkey);if(keys.length){plan.push([id,keys]);grand+=keys.length}}
+  for(const[id,keys]of plan){if(S.stop)break;if(!S.doc||S.doc.id!==id)await openDoc(id);const st=await processDoc(id,keys,{inner:true,base:tot.done,grand});for(const k in tot)tot[k]+=st[k]||0;await loadDocs()}
+  setRunning(false);finishMsg(tot);if(S.doc){S.doc=await api('/api/docs/'+S.doc.id);renderAll();renderFields()}}
 async function processDocs(ids){
   if(S.running)return toast('이미 변환 중입니다',true);
   const docs=[];let grand=0;
   for(const id of ids){const d=await api('/api/docs/'+id);const n=d.pages.filter(p=>p.pending||!p.result).length;if(n){docs.push(id);grand+=n}}
   if(!grand)return toast('모든 문서가 이미 변환되어 있습니다');
-  S.stop=false;setRunning(true,0);const tot={done:0,fails:0,rot:0,missing:0,pages:0};
+  S.stop=false;setRunning(true,0);const tot={done:0,fails:0,rot:0,missing:0,pages:0,json:0};
   for(const id of docs){
     if(S.stop)break;
     if(!S.doc||S.doc.id!==id)await openDoc(id);
@@ -2073,11 +2161,16 @@ async function pollBatch(){
 const OK_EXT=/\.(png|jpe?g|tiff?|bmp|webp|gif|pdf)$/i;
 const natCmp=(a,b)=>a.localeCompare(b,'ko',{numeric:true,sensitivity:'base'});
 /* items: [{file, path}] — path는 폴더 기준 상대 경로 ('폴더/하위/파일.jpg') */
-function normItems(items){return items.filter(x=>OK_EXT.test(x.file.name)&&!/(^|\/)\./.test(x.path)).sort((a,b)=>natCmp(a.path,b.path))}
+// 다른 AI가 만든 인식 결과 JSON — 같은 폴더·같은 이름의 PDF/이미지와 짝지어 바로 결과로 넣는다
+const JSONREF={},JSONCACHE={};
+const stripExt=p=>p.replace(/\.json$/i,'').replace(/\.(png|jpe?g|tiff?|bmp|webp|gif|pdf)$/i,'').toLowerCase();
+function noteJson(items){for(const x of items)if(/\.json$/i.test(x.file.name)&&!/(^|\/)\./.test(x.path)){JSONREF[stripExt(x.path)]=x.file;JSONREF['@'+stripExt(x.file.name)]=x.file}}
+function jsonFileFor(path){if(!path)return null;const k=stripExt(path);return JSONREF[k]||JSONREF['@'+stripExt(path.split('/').pop())]||null}
+function normItems(items){noteJson(items);return items.filter(x=>OK_EXT.test(x.file.name)&&!/(^|\/)\./.test(x.path)).sort((a,b)=>natCmp(a.path,b.path))}
 function dirOf(p){const i=p.lastIndexOf('/');return i<0?'':p.slice(0,i)}
 async function upload(files){const fs=[...files],pj=fs.filter(f=>/\.iuxocr$/i.test(f.name));if(pj.length)await openProjects(pj);const rest=fs.filter(f=>!/\.iuxocr$/i.test(f.name));if(!rest.length&&pj.length)return;upload2(normItems(rest.map(f=>({file:f,path:f.webkitRelativePath||f.name}))))}
 async function upload2(items,opts={}){
-  if(!items.length)return toast('이미지나 PDF 파일만 추가할 수 있습니다',true);
+  if(!items.length)return toast(Object.keys(JSONREF).length?'JSON은 짝이 되는 PDF·이미지와 같이 넣어 주세요':'이미지나 PDF 파일만 추가할 수 있습니다',true);
   const hasDirs=items.some(x=>x.path.includes('/'));
   if(hasDirs&&!opts.mode)opts.mode='folder';
   // 묶음 만들기: folder 모드면 폴더별, 아니면 파일별
@@ -2091,6 +2184,8 @@ async function upload2(items,opts={}){
       catch(e){toast(`${g.name}: ${e.message}`,true)}
     }
     await loadDocs(ids[0]);
+    const jn=items.filter(x=>jsonFileFor(x.path)).length;
+    if(jn&&!opts.ocr){toast(`인식 결과 JSON ${jn}개를 찾았습니다 — 짝이 되는 파일에 바로 넣습니다`);await jsonDocs(ids);return}
     if(opts.ocr&&ids.length){toast(`파일 ${items.length}개 목록을 불러왔습니다 — 한 장씩 불러오며 변환합니다`);processDocs(ids)}
     else toast(`파일 ${items.length}개 목록을 불러왔습니다 (문서 ${ids.length}개) — 쪽을 골라 '이 페이지 인식', 또는 '전체 페이지 인식'`);
     return;
@@ -2125,6 +2220,7 @@ async function upload2(items,opts={}){
     toast(opts.mode==='folder'?`파일 ${items.length}개를 불러왔습니다 (문서 ${ids.length}개) — '전체 페이지 인식'으로 차례대로 인식하세요`:`${ids.length}개 문서를 추가했습니다`);
     if(opts.ocr&&ids.length)runDocs(ids);
   }finally{t.remove();bar.hidden=true;bar.firstElementChild.style.width='0'}
+  if(!opts.ocr&&ids.length&&items.some(x=>jsonFileFor(x.path))){toast('인식 결과 JSON을 찾았습니다 — 짝이 되는 파일에 바로 넣습니다');await jsonDocs(ids)}
 }
 let pendingFolder=null;
 function askFolder(items){
