@@ -352,11 +352,18 @@ table.ot td.low{background:#fff4e5}
 @keyframes locPulse{0%{box-shadow:0 0 0 0 rgba(20,184,166,.55)}70%{box-shadow:0 0 0 14px rgba(20,184,166,0)}100%{box-shadow:none}}
 .viewer.selmode .stage{cursor:crosshair}
 .viewer.panning,.viewer.panmode .stage{cursor:grab}
-.selpop{position:absolute;z-index:6;width:360px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.22);padding:10px;display:flex;flex-direction:column;gap:8px}
+.selpop{position:absolute;z-index:6;width:500px;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.22);padding:10px;display:flex;flex-direction:column;gap:8px}
 .selpop .hd{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--text-2);white-space:nowrap}
 .selpop .hd .autocp{white-space:nowrap;flex:0 0 auto}
 .selpop .sub{font-size:11.5px;color:var(--text-3);margin-top:-4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .selpop .pol{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+/* 다듬기 옵션: 넓은 화면에선 팝업 오른쪽에 세로 한 줄 */
+.selpop .bd{flex-direction:row!important;align-items:flex-start;gap:10px!important}
+.selpop .mc{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.selpop .bd>.pol{flex:0 0 128px;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:5px;padding-left:10px;border-left:1px solid var(--line);align-self:stretch}
+.selpop .bd>.pol::before{content:'복사할 때 다듬기';font-size:11px;font-weight:800;color:var(--text-3);margin-bottom:2px}
+.selpop .bd>.pol label{height:30px;border-radius:8px;padding:0 8px;white-space:nowrap}
+.selpop .bd>.pol label:last-child{height:auto;min-height:30px;flex-wrap:wrap;padding:5px 8px;white-space:normal;line-height:1.5}
 .selpop .pol label{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--line);border-radius:13px;font-size:11.5px;font-weight:700;color:var(--text-2);cursor:pointer;white-space:nowrap}
 .selpop .pol label:has(input:checked){border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
 .selpop .pol input[type=checkbox]{margin:0;accent-color:var(--accent)}
@@ -370,7 +377,7 @@ table.ot td.low{background:#fff4e5}
 .selpop .btn.big{flex:1 1 0;height:42px;font-size:14px;font-weight:800;border-radius:10px;gap:7px}
 .selpop .btn.big svg{width:18px;height:18px}
 .selpop .btn.big small{font-size:11px;font-weight:600;opacity:.75}
-.selpop.wide{width:480px}
+.selpop.wide{width:600px}
 .selpop .prev b{color:var(--accent-ink);font-size:11.5px}
 .selpop .hd .sp{flex:1}
 .selpop .hd{cursor:move;user-select:none;touch-action:none;margin:-4px -4px 0;padding:2px 2px 2px 0;border-radius:8px}
@@ -441,7 +448,7 @@ table.ot td.low{background:#fff4e5}
 .vbar::-webkit-scrollbar{height:4px}.vbar::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:4px}
 .only-narrow,#mnav,#drawerBg{display:none}
 .selpop{max-width:calc(100vw - 24px)}
-@media (max-width:760px){.selpop,.selpop.wide{position:fixed;left:8px!important;right:8px;top:auto!important;bottom:calc(62px + env(safe-area-inset-bottom));width:auto;max-width:none;max-height:58vh;overflow:auto;z-index:40}.selpop .hd{cursor:default}.selpop .hd .grip{display:none}.selpop .minitx{max-width:none;flex:1}}
+@media (max-width:760px){.selpop,.selpop.wide{position:fixed;left:8px!important;right:8px;top:auto!important;bottom:calc(62px + env(safe-area-inset-bottom));width:auto;max-width:none;max-height:58vh;overflow:auto;z-index:40}.selpop .hd{cursor:default}.selpop .hd .grip{display:none}.selpop .minitx{max-width:none;flex:1}.selpop .bd{flex-direction:column!important;align-items:stretch}.selpop .bd>.pol{flex:none;flex-direction:row;flex-wrap:wrap;padding-left:0;border-left:0}.selpop .bd>.pol::before{display:none}.selpop .bd>.pol label,.selpop .bd>.pol label:last-child{height:26px;min-height:0;border-radius:13px;padding:0 8px;white-space:nowrap}}
 @media (max-width:1600px){
   #toolSeg button,.seg #boxToggle,#rotAuto{font-size:0;gap:0}
   #toolSeg button svg,.seg #boxToggle svg{width:15px!important;height:15px!important}
@@ -2076,9 +2083,12 @@ function showSelPop(text,label){
   pop.classList.toggle('mini',!!S.popMini);
   pop.innerHTML=`<div class="hd" title="끌어서 잠깐 옮기기">${ic('grip','grip')}${ic('copy')}<span class="ttl">${SEL.line!=null?'이 줄 수정·복사':'선택 영역'}</span><span class="minitx">${text?esc(text.replace(/\s+/g,' ')):''}</span><span class="sp"></span><label class="autocp" title="켜면 박스·줄을 클릭만 해도 바로 복사"><input type="checkbox" id="spAuto" ${S.autoCopy?'checked':''}>자동 복사</label><button class="btn icon sm ghost" id="spMin" title="${S.popMini?'펼치기':'접기 (제목만 남기기)'}">${ic(S.popMini?'chevD':'chevU')}</button><button class="btn icon sm ghost" id="spX" title="닫기 (Esc)">${ic('x')}</button></div>
     <div class="bd">
+    <div class="mc">
     ${label?`<div class="sub" title="${esc(label)}">${esc(label)}</div>`:''}
     ${text===null?`<div class="placeholder" style="padding:14px">${ic('loader','spin')} 인식 중…</div>`:`<textarea id="spText" spellcheck="false">${esc(text)}</textarea><div class="prev" id="spPrev" hidden></div>`}
     <div class="row bigbtns"><button class="btn primary big" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 <small>Ctrl+C</small></button><button class="btn big" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button></div>
+    ${(text&&S.engines?.ollama?.available&&S.set.llm)||SEL.line!=null?`<div class="row">${text&&S.engines?.ollama?.available&&S.set.llm?`<button class="btn sm" id="spAi" title="PC의 AI(${esc(S.set.llm)})로 인식 오류·맞춤법을 문맥에 맞게 고칩니다. 인터넷 없이 동작">${ic('sparkles')}AI 교정</button>`:''}${SEL.line!=null?'<span class="muted" style="font-size:11px;align-self:center">고치면 오른쪽 텍스트에도 반영</span>':''}</div>`:''}
+    <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div></div>
     ${text===null?'':`<div class="pol" title="복사할 때 글자를 다듬습니다 (원본 인식 결과는 그대로)">
       <label title="자주 틀리는 맞춤법·인식 오타 고치기 (됬→됐, 슴니다→습니다, 2O26→2026, 2026 .11 .16 → 2026. 11. 16.)"><input type="checkbox" data-pol="spell" ${P.spell?'checked':''}>맞춤법</label>
       <label title="낱자로 벌어진 글 붙이기(출 석 부 → 출석부) · 조사 붙이기(기관 의 → 기관의) · 자주 틀리는 띄어쓰기(아래와같이 → 아래와 같이, 할수있다 → 할 수 있다) · 문장부호·날짜·전화번호 정리"><input type="checkbox" data-pol="space" ${P.space?'checked':''}>띄어쓰기 정리</label>
@@ -2087,9 +2097,7 @@ function showSelPop(text,label){
       <label title="한자를 한글 음으로 (徐海萬 → 서해만, 李 → 이)"><input type="checkbox" data-pol="hz" ${P.hz?'checked':''}>한자→한글</label>
       <label title="한글 뒤에 한자를 괄호로 남기기 (서해만(徐海萬))" ${P.hz?'':'hidden'} data-hzb><input type="checkbox" data-pol="hzBoth" ${P.hzBoth?'checked':''}>(漢字) 같이</label>
       <label title="쉼표로 나열된 글이 길면 '첫 항목 외 N명'으로"><input type="checkbox" data-pol="others" ${P.others?'checked':''}><input type="number" id="spOthN" min="1" max="99" value="${P.othersLen}">자 넘으면 외 N<select id="spOthU" style="height:20px;font-size:11px;flex:0 0 auto;width:auto;padding:0 2px">${['명','건','개','곳'].map(u=>`<option ${u===P.othersUnit?'selected':''}>${u}</option>`).join('')}</select></label>
-    </div>`}
-    ${(text&&S.engines?.ollama?.available&&S.set.llm)||SEL.line!=null?`<div class="row">${text&&S.engines?.ollama?.available&&S.set.llm?`<button class="btn sm" id="spAi" title="PC의 AI(${esc(S.set.llm)})로 인식 오류·맞춤법을 문맥에 맞게 고칩니다. 인터넷 없이 동작">${ic('sparkles')}AI 교정</button>`:''}${SEL.line!=null?'<span class="muted" style="font-size:11px;align-self:center">고치면 오른쪽 텍스트에도 반영</span>':''}</div>`:''}
-    <div class="row"><select id="spField" ${text===null?'disabled':''}><option value="">항목에 넣기…</option>${vals.map((x,i)=>`<option value="${i}">${esc(x.name)}${x.value?' (바꾸기)':''}</option>`).join('')}<option value="new">+ 새 항목으로 추가</option></select></div></div>`;
+    </div>`}</div>`;
   pop.classList.toggle('wide',!!text&&(text.includes('\n')||text.length>60)); // 여러 줄·긴 글은 넓게
   pop.hidden=false;
   fitSpText();
