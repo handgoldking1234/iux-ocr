@@ -223,6 +223,9 @@ aside.right{background:var(--panel);border-left:1px solid var(--line);display:fl
 .eng button:disabled{opacity:.45;cursor:not-allowed}
 .eng .tag{position:absolute;right:6px;top:6px;font-size:9.5px;font-weight:800;padding:1px 5px;border-radius:4px;background:var(--panel-2);color:var(--text-3)}
 select,input[type=text],input[type=search],textarea.inp{height:30px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:0 8px;outline:none;min-width:0}
+/* 선택 상자: 브라우저 기본 화살표 대신 좌우 여백이 같은 아이콘 */
+select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238f8f8f' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 10px center!important;background-size:14px!important;padding-left:10px!important;padding-right:30px!important}
+.selpop .pol select{padding:0 20px 0 8px!important;background-position:right 5px center!important;background-size:12px!important;border-radius:6px}
 select:focus,input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-2)}
 .chips{display:flex;flex-wrap:wrap;gap:5px;flex:1}
 .chip{height:26px;padding:0 9px;border-radius:99px;border:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;gap:4px}
