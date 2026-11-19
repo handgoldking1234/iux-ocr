@@ -79,6 +79,50 @@
     return toBlob(t, 'image/jpeg', 0.78);
   }
 
+  /* ---------------- PDF 글자 층 → 줄 + 줄 위치 (app/server.py pdf_text_lines 와 같은 규칙) ----------------
+     줄 위치(0~1)가 있어야 뷰어에서 글자를 눌러·끌어 바로 복사할 수 있다. 기울어진 스캔을 OCR한 PDF도 줄이 섞이지 않게
+     높이가 겹치고 오른쪽으로 이어지는 조각끼리 묶는다. */
+  function pdfTextLines(lib, items, vp) {
+    const W = vp.width, H = vp.height, frags = [];
+    for (const it of items) {
+      const s = it.str || ''; if (!s.trim()) continue;
+      const tx = lib.Util.transform(vp.transform, it.transform);
+      const fh = Math.hypot(tx[2], tx[3]) || Math.abs(it.height) || 10;
+      const x0 = tx[4], base = tx[5], w = Math.max(0, (it.width || 0) * (vp.scale || 1));
+      const f = { t: s, x0, x1: x0 + w, y0: base - fh * 0.9, y1: base + fh * 0.15, sp0: /^\s/.test(s), sp1: /\s$/.test(s) };
+      f.ly0 = f.y0; f.ly1 = f.y1; frags.push(f);
+    }
+    frags.sort((a, b) => a.x0 - b.x0);
+    const lines = [];
+    for (const f of frags) {
+      const fh = f.y1 - f.y0; let best = null, bov = 0;
+      for (const ln of lines) {
+        if (ln.x1 > f.x0 + 0.5 * fh) continue;
+        const ov = Math.min(f.y1, ln.ly1) - Math.max(f.y0, ln.ly0);
+        if (ov >= 0.5 * Math.min(fh, ln.ly1 - ln.ly0) && ov > bov && f.x0 - ln.x1 < 8 * fh) { best = ln; bov = ov; }
+      }
+      if (!best) lines.push({ ...f, fy: (f.y0 + f.y1) / 2 });
+      else {
+        const gap = f.x0 - best.x1;
+        best.t += (best.sp1 || f.sp0 || gap > 0.25 * fh ? ' ' : '') + f.t;
+        Object.assign(best, { x0: Math.min(best.x0, f.x0), y0: Math.min(best.y0, f.y0), x1: Math.max(best.x1, f.x1), y1: Math.max(best.y1, f.y1), ly0: f.y0, ly1: f.y1, sp1: f.sp1 });
+      }
+    }
+    lines.sort((a, b) => a.fy - b.fy);
+    const hs = lines.map(l => Math.max(1, l.ly1 - l.ly0)).sort((a, b) => a - b), med = hs[hs.length >> 1] || 10;
+    const out = []; let block = 0, prevB = null;
+    const r5 = v => Math.round(v * 1e5) / 1e5, cl = v => Math.max(0, Math.min(1, v));
+    for (const ln of lines) {
+      const text = ln.t.replace(/\s+/g, ' ').trim(); if (!text) continue;
+      if (prevB !== null && ln.y0 - prevB > 1.6 * med) block++;
+      prevB = ln.y1;
+      const x0 = cl(ln.x0 / W), y0 = cl(ln.y0 / H);
+      out.push({ text, conf: null, block, box: [r5(x0), r5(y0), r5(cl(ln.x1 / W) - x0), r5(cl(ln.y1 / H) - y0)] });
+    }
+    return out;
+  }
+  function linesText(lines) { const o = []; let prev = null; for (const l of lines) { if (prev !== null && l.block !== prev) o.push(''); o.push(l.text); prev = l.block; } return o.join('\n'); }
+
   /* ---------------- 불러오기 (이미지·PDF·TIFF) ---------------- */
   let pdfjs = null;
   async function loadPdfjs() {
@@ -138,10 +182,9 @@
         let extra = { dpi: Math.round(scale * 72) };
         try {
           const tc = await page.getTextContent();
-          let text = '', lastY = null;
-          for (const it of tc.items) { const y = it.transform[5]; if (lastY !== null && Math.abs(y - lastY) > 2) text += '\n'; text += it.str; lastY = y; if (it.hasEOL) { text += '\n'; lastY = null; } }
-          text = text.replace(/\n{2,}/g, '\n').trim();
-          if (text.length >= 20) extra = { ...extra, pdf_text: true, result: { engine: 'pdf-text', lines: text.split('\n').map(t => ({ text: t, conf: null, box: null, block: 0 })), text, mean_conf: null, time_ms: 0 } };
+          const lines = pdfTextLines(lib, tc.items, vp0);
+          const text = linesText(lines);
+          if (text.replace(/\s/g, '').length >= 15) extra = { ...extra, pdf_text: true, result: { engine: 'pdf-text', lines, text, mean_conf: null, time_ms: 0 } };
         } catch (e) { /* 텍스트 층 없음 */ }
         await addPage(c, i, extra);
       }

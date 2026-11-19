@@ -34,6 +34,90 @@ STATIC = ROOT / "app" / "static"
 IMG_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".gif"}
 PDF_DPI = 300
 
+
+def pdf_text_lines(page) -> list[dict]:
+    """글자가 들어 있는 PDF(이미 OCR한 PDF 포함)에서 줄과 줄 위치(0~1 비율)를 뽑는다.
+    줄 위치가 있어야 뷰어에서 글자를 눌러·끌어 바로 복사할 수 있다.
+    글자 하나하나의 위치로 조각을 만들고, 높이가 겹치고 오른쪽으로 이어지는 조각끼리 한 줄로 묶는다
+    (기울어진 스캔을 OCR한 PDF도 줄이 섞이지 않게)."""
+    import pypdfium2.raw as pdfium_c
+    pw, ph = page.get_size()
+    tp = page.get_textpage()
+    frags: list[dict] = []
+    cur, sp = None, False
+    for i in range(tp.count_chars()):
+        u = pdfium_c.FPDFText_GetUnicode(tp.raw, i)
+        if u in (0x0D, 0x0A, 0xFFFE, 0x02):
+            cur = None
+            continue
+        ch = chr(u)
+        if ch.isspace():
+            sp = True
+            continue
+        l, b, r, t = tp.get_charbox(i)
+        x0, y0, x1, y1 = l, ph - t, r, ph - b
+        if x1 - x0 <= 0 or y1 - y0 <= 0:
+            continue
+        h = y1 - y0
+        if cur is not None:
+            ov = min(y1, cur["ly1"]) - max(y0, cur["ly0"])
+            if ov < 0.5 * min(h, cur["ly1"] - cur["ly0"]) or x0 < cur["lx0"] - 1 or x0 - cur["x1"] > 3 * h:
+                cur = None
+        if cur is None:
+            cur = {"t": ch, "x0": x0, "y0": y0, "x1": x1, "y1": y1}
+            frags.append(cur)
+        else:
+            cur["t"] += (" " if sp or x0 - cur["x1"] > 0.3 * h else "") + ch
+            cur.update(x0=min(cur["x0"], x0), y0=min(cur["y0"], y0), x1=max(cur["x1"], x1), y1=max(cur["y1"], y1))
+        cur.update(lx0=x0, ly0=y0, ly1=y1)
+        sp = False
+    return _group_lines(frags, pw, ph)
+
+
+def _group_lines(frags: list[dict], pw: float, ph: float) -> list[dict]:
+    """조각(x0,y0,x1,y1 · 끝 글자 높이 ly0/ly1)을 줄로 묶기 — web/shim.js groupPdfLines 와 같은 규칙."""
+    lines: list[dict] = []
+    for f in sorted(frags, key=lambda f: f["x0"]):
+        fh = f["y1"] - f["y0"]
+        best, bov = None, 0.0
+        for ln in lines:
+            if ln["x1"] > f["x0"] + 0.5 * fh:
+                continue
+            ov = min(f["y1"], ln["ly1"]) - max(f["y0"], ln["ly0"])
+            if ov >= 0.5 * min(fh, ln["ly1"] - ln["ly0"]) and ov > bov and f["x0"] - ln["x1"] < 8 * fh:
+                best, bov = ln, ov
+        if best is None:
+            lines.append({"t": f["t"], "x0": f["x0"], "y0": f["y0"], "x1": f["x1"], "y1": f["y1"], "ly0": f.get("ly0", f["y0"]), "ly1": f.get("ly1", f["y1"]), "fy": (f["y0"] + f["y1"]) / 2})
+        else:
+            best["t"] += " " + f["t"]
+            best.update(x0=min(best["x0"], f["x0"]), y0=min(best["y0"], f["y0"]), x1=max(best["x1"], f["x1"]), y1=max(best["y1"], f["y1"]),
+                        ly0=f.get("ly0", f["y0"]), ly1=f.get("ly1", f["y1"]))
+    lines.sort(key=lambda ln: ln["fy"])
+    hs = sorted(max(1.0, ln["ly1"] - ln["ly0"]) for ln in lines) or [10.0]
+    med = hs[len(hs) // 2]
+    out, block, prev_bottom = [], 0, None
+    for ln in lines:
+        txt = re.sub(r"\s+", " ", ln["t"]).strip()
+        if not txt:
+            continue
+        if prev_bottom is not None and ln["y0"] - prev_bottom > 1.6 * med:
+            block += 1
+        prev_bottom = ln["y1"]
+        out.append({"text": txt, "conf": None, "block": block,
+                    "box": [round(ln["x0"] / pw, 5), round(ln["y0"] / ph, 5), round((ln["x1"] - ln["x0"]) / pw, 5), round((ln["y1"] - ln["y0"]) / ph, 5)]})
+    return out
+
+
+def lines_to_text(lines: list[dict]) -> str:
+    """화면의 linesToText 와 같은 규칙 (단락이 바뀌면 빈 줄)."""
+    out, prev = [], None
+    for l in lines:
+        if prev is not None and l.get("block") != prev:
+            out.append("")
+        out.append(l["text"])
+        prev = l.get("block")
+    return "\n".join(out)
+
 import tempfile as _tf  # noqa: E402
 _tf.tempdir = engines._ascii_tmp_root() or _tf.tempdir  # 한글 사용자 폴더 대응 (OpenCV·Tesseract)
 
@@ -147,7 +231,13 @@ def ingest_files(items: list[tuple[Path, str]], doc_name: str, existing: dict | 
                     except Exception:  # noqa: BLE001
                         text = ""
                     if len(text) >= 20:
-                        lines = [{"text": l, "conf": None, "box": None, "block": 0} for l in text.splitlines()]
+                        try:  # 줄 위치까지 (뷰어에서 눌러·끌어 복사)
+                            lines = pdf_text_lines(page)
+                            text = lines_to_text(lines) if lines else text
+                        except Exception:  # noqa: BLE001
+                            lines = []
+                        if not lines:
+                            lines = [{"text": l, "conf": None, "box": None, "block": 0} for l in text.splitlines()]
                         pinfo["pdf_text"] = True
                         pinfo["result"] = {"engine": "pdf-text", "lines": lines, "text": text, "mean_conf": None, "time_ms": 0}
                 pdf.close()
