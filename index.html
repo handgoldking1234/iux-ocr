@@ -364,7 +364,8 @@ table.ot td.low{background:#fff4e5}
 .selpop .bd>.pol{flex:0 0 128px;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:5px;padding-left:10px;border-left:1px solid var(--line);align-self:stretch}
 .selpop .bd>.pol::before{content:'복사할 때 다듬기';font-size:11px;font-weight:800;color:var(--text-3);margin-bottom:2px}
 .selpop .bd>.pol label{height:30px;border-radius:8px;padding:0 8px;white-space:nowrap}
-.selpop .bd>.pol label:last-child{height:auto;min-height:30px;flex-wrap:wrap;padding:5px 8px;white-space:normal;line-height:1.5}
+.selpop .bd>.pol label:last-child{height:auto;min-height:30px;flex-wrap:wrap;padding:5px 8px;row-gap:4px;white-space:nowrap;line-height:1.4}
+.selpop .pol .br{display:none}.selpop .bd>.pol .br{display:block;flex-basis:100%;height:0}
 .selpop .pol label{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 8px;border:1px solid var(--line);border-radius:13px;font-size:11.5px;font-weight:700;color:var(--text-2);cursor:pointer;white-space:nowrap}
 .selpop .pol label:has(input:checked){border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
 .selpop .pol input[type=checkbox]{margin:0;accent-color:var(--accent)}
@@ -2099,7 +2100,7 @@ function showSelPop(text,label){
       <label title="여러 줄을 한 줄로 이어서"><input type="checkbox" data-pol="oneline" ${P.oneline?'checked':''}>한 줄로</label>
       <label title="한자를 한글 음으로 (徐海萬 → 서해만, 李 → 이)"><input type="checkbox" data-pol="hz" ${P.hz?'checked':''}>한자→한글</label>
       <label title="한글 뒤에 한자를 괄호로 남기기 (서해만(徐海萬))" ${P.hz?'':'hidden'} data-hzb><input type="checkbox" data-pol="hzBoth" ${P.hzBoth?'checked':''}>(漢字) 같이</label>
-      <label title="쉼표로 나열된 글이 길면 '첫 항목 외 N명'으로"><input type="checkbox" data-pol="others" ${P.others?'checked':''}><input type="number" id="spOthN" min="1" max="99" value="${P.othersLen}">자 넘으면 외 N<select id="spOthU" style="height:20px;font-size:11px;flex:0 0 auto;width:auto;padding:0 2px">${['명','건','개','곳'].map(u=>`<option ${u===P.othersUnit?'selected':''}>${u}</option>`).join('')}</select></label>
+      <label title="쉼표로 나열된 글이 길면 '첫 항목 외 N명'으로"><input type="checkbox" data-pol="others" ${P.others?'checked':''}><input type="number" id="spOthN" min="1" max="99" value="${P.othersLen}"><span>자 넘으면</span><i class="br"></i><span>외 N</span><select id="spOthU" style="height:20px;font-size:11px;flex:0 0 auto;width:auto;padding:0 2px">${['명','건','개','곳'].map(u=>`<option ${u===P.othersUnit?'selected':''}>${u}</option>`).join('')}</select></label>
     </div>`}</div>`;
   pop.classList.toggle('wide',!!text&&(text.includes('\n')||text.length>60)); // 여러 줄·긴 글은 넓게
   pop.hidden=false;
