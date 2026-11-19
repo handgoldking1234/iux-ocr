@@ -371,7 +371,10 @@ table.ot td.low{background:#fff4e5}
 .selpop .bd>.pol label:last-child{display:grid;grid-template-columns:auto 36px auto;justify-content:start;align-items:center;column-gap:6px;row-gap:5px}
 .selpop .bd>.pol label:last-child .br{display:none}
 .selpop .bd>.pol label:last-child>span:nth-of-type(2){grid-column:2;text-align:center} /* '외 N'은 숫자 칸 바로 아래 */
-.selpop .bd>.pol label:last-child>select{grid-column:3;justify-self:start}
+.selpop .bd>.pol label:last-child>.unit{grid-column:3;justify-self:start}
+.selpop .pol .unit{display:inline-flex;align-items:center;gap:4px}
+.selpop .pol #spOthC{width:44px;height:22px;border:1px solid var(--line);border-radius:6px;padding:0 4px;font-size:11.5px;font-weight:700;background:var(--panel);color:var(--text);text-align:center;box-shadow:none}
+.selpop .pol #spOthC:focus{outline:none;border-color:var(--accent)}
 .selpop .pol input[type=number]{width:36px!important;height:24px!important;padding:0 2px!important;text-align:center;font-size:12px;font-weight:700;line-height:22px;color:var(--text);box-sizing:border-box;-moz-appearance:textfield;appearance:textfield}
 .selpop .pol input[type=number]::-webkit-inner-spin-button,.selpop .pol input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .selpop .pol input[type=number]:focus{box-shadow:none;outline:none;border-color:var(--accent)}
@@ -2108,7 +2111,7 @@ function showSelPop(text,label){
       <label title="여러 줄을 한 줄로 이어서"><input type="checkbox" data-pol="oneline" ${P.oneline?'checked':''}>한 줄로</label>
       <label title="한자를 한글 음으로 (徐海萬 → 서해만, 李 → 이)"><input type="checkbox" data-pol="hz" ${P.hz?'checked':''}>한자→한글</label>
       <label title="한글 뒤에 한자를 괄호로 남기기 (서해만(徐海萬))" ${P.hz?'':'hidden'} data-hzb><input type="checkbox" data-pol="hzBoth" ${P.hzBoth?'checked':''}>(漢字) 같이</label>
-      <label title="쉼표로 나열된 글이 길면 '첫 항목 외 N명'으로"><input type="checkbox" data-pol="others" ${P.others?'checked':''}><input type="number" id="spOthN" min="1" max="99" value="${P.othersLen}"><span>자 넘으면</span><i class="br"></i><span>외 N</span><select id="spOthU" style="height:20px;font-size:11px;flex:0 0 auto;width:auto;padding:0 2px">${['명','건','개','곳'].map(u=>`<option ${u===P.othersUnit?'selected':''}>${u}</option>`).join('')}</select></label>
+      <label title="쉼표로 나열된 글이 길면 '첫 항목 외 N명'으로"><input type="checkbox" data-pol="others" ${P.others?'checked':''}><input type="number" id="spOthN" min="1" max="99" value="${P.othersLen}"><span>자 넘으면</span><i class="br"></i><span>외 N</span><span class="unit">${(()=>{const U=['명','건','개','곳'],cu=!U.includes(P.othersUnit);return `<select id="spOthU" style="height:20px;font-size:11px;flex:0 0 auto;width:auto;padding:0 2px">${U.map(u=>`<option ${u===P.othersUnit?'selected':''}>${u}</option>`).join('')}<option value="__c" ${cu?'selected':''}>직접 입력</option></select><input type="text" id="spOthC" maxlength="6" placeholder="단위" value="${cu?esc(P.othersUnit):''}" ${cu?'':'hidden'} title="단위를 직접 입력 (예: 부, 권, 쪽)">`})()}</span></label>
     </div>`}</div>`;
   pop.classList.toggle('wide',!!text&&(text.includes('\n')||text.length>60)); // 여러 줄·긴 글은 넓게
   pop.hidden=false;
@@ -2144,7 +2147,10 @@ function showSelPop(text,label){
     pv.classList.toggle('same',o===t);pv.innerHTML=`<div class="pl">${ic('copy')}<b>복사될 글</b><span>${o===t?'위 글 그대로':'다듬기 적용됨'}</span></div><div class="pt">${esc(o)||'<span class="muted">(빈 글)</span>'}</div>`};
   $$('#selPop [data-pol]').forEach(c=>c.onchange=()=>{S.polish[c.dataset.pol]=c.checked;if(c.dataset.pol==='space'&&c.checked)S.polish.nospace=false;if(c.dataset.pol==='nospace'&&c.checked)S.polish.space=false;$$('#selPop [data-pol]').forEach(x=>x.checked=!!S.polish[x.dataset.pol]);const hb=$('#selPop [data-hzb]');if(hb)hb.hidden=!S.polish.hz;syncHz();store.set('polish',S.polish);prev();if(S.autoCopy)copySel()});
   $('#spOthN')&&($('#spOthN').oninput=e=>{S.polish.othersLen=Math.max(1,+e.target.value||10);store.set('polish',S.polish);prev()});
-  $('#spOthU')&&($('#spOthU').onchange=e=>{S.polish.othersUnit=e.target.value;store.set('polish',S.polish);prev()});
+  $('#spOthU')&&($('#spOthU').onchange=e=>{const c=$('#spOthC'),cu=e.target.value==='__c';c.hidden=!cu;
+    if(cu){c.focus();S.polish.othersUnit=c.value.trim()||'명'}else S.polish.othersUnit=e.target.value;store.set('polish',S.polish);prev()});
+  $('#spOthC')&&($('#spOthC').oninput=e=>{S.polish.othersUnit=e.target.value.trim()||'명';store.set('polish',S.polish);prev()});
+  $('#spOthC')&&($('#spOthC').onclick=e=>e.preventDefault()); // 라벨 클릭으로 체크가 바뀌지 않게
   $('#spText')?.addEventListener('input',()=>{prev();fitSpText()});prev();
   $('#spField').onchange=e=>putSelIntoField(e.target.value);
   $('#spText')?.addEventListener('keydown',e=>{if(e.key==='Escape')hideSel()});
