@@ -389,7 +389,16 @@ table.ot td.low{background:#fff4e5}
 .selpop .prev{font-size:14.5px;font-weight:600;line-height:1.6;padding:9px 12px;border-radius:10px;background:var(--accent-2);border:2px solid var(--accent);white-space:pre-wrap;word-break:break-all;max-height:30vh;overflow:auto;margin-top:-2px;box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 22%,transparent)}
 .selpop .prev .pl{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--accent-ink);margin-bottom:4px}
 .selpop .prev .pl svg{width:13px;height:13px}.selpop .prev .pl span{color:var(--text-3);font-weight:600}
-.selpop .prev .pt{color:var(--text)}
+.selpop .prev .pt{color:var(--text);outline:none;border-radius:6px;margin:0 -4px;padding:2px 4px;cursor:text;min-height:1.6em}
+.selpop .prev .pt:hover{background:color-mix(in srgb,var(--panel) 55%,transparent)}
+.selpop .prev .pt:focus{background:var(--panel);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.selpop .prev .pt:empty::before{content:attr(data-ph);color:var(--text-3)}
+.selpop .prev .pe{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--text-3)}
+.selpop .prev .pe svg{width:11px;height:11px}
+.selpop .prev.edited .pe{display:none}
+.selpop .prev .prs{margin-left:auto;height:22px;padding:0 8px;border-radius:99px;border:1px solid var(--line);background:var(--panel);font-size:11px;font-weight:700;color:var(--text-2);cursor:pointer}
+.selpop .prev.edited{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--panel))}
+.selpop .prev.edited .pst{color:var(--warn)!important}
 .selpop .prev.same{background:var(--panel);box-shadow:none}
 .selpop .bigbtns{flex-wrap:nowrap!important}
 .selpop .btn.big{flex:1 1 0;height:42px;font-size:14px;font-weight:800;border-radius:10px;gap:7px}
@@ -2155,7 +2164,13 @@ function showSelPop(text,label){
   $('#spCopy').onclick=copySel;
   const prev=()=>{const t=$('#spText')?.value,pv=$('#spPrev');if(t==null||!pv)return;const o=polish(t),P=S.polish;
     pv.hidden=false; // 늘 글상자 바로 아래에 — 실제로 복사되는 글을 크게
-    pv.classList.toggle('same',o===t);pv.innerHTML=`<div class="pl">${ic('copy')}<b>복사될 글</b><span>${o===t?'위 글 그대로':'다듬기 적용됨'}</span></div><div class="pt">${esc(o)||'<span class="muted">(빈 글)</span>'}</div>`};
+    SEL.edited=null; // 위 글·다듬기를 바꾸면 다시 만든다 (직접 고친 내용은 버림)
+    pv.classList.toggle('same',o===t);pv.classList.remove('edited');
+    pv.innerHTML=`<div class="pl">${ic('copy')}<b>복사될 글</b><span class="pst">${o===t?'위 글 그대로':'다듬기 적용됨'}</span><span class="pe">${ic('edit')}눌러서 바로 고쳐 복사</span><button class="prs" hidden title="직접 고친 내용을 버리고 다시 만들기">되돌리기</button></div><div class="pt" contenteditable="plaintext-only" spellcheck="false" data-ph="(빈 글)">${esc(o)}</div>`;
+    const pt=pv.querySelector('.pt');
+    pt.oninput=()=>{SEL.edited=pt.innerText.replace(/\n$/,'');pv.classList.add('edited');pv.querySelector('.pst').textContent='직접 고침 · 이대로 복사';pv.querySelector('.prs').hidden=false};
+    pt.onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();copySel()}};
+    pv.querySelector('.prs').onclick=prev};
   $$('#selPop [data-pol]').forEach(c=>c.onchange=()=>{S.polish[c.dataset.pol]=c.checked;if(c.dataset.pol==='space'&&c.checked)S.polish.nospace=false;if(c.dataset.pol==='nospace'&&c.checked)S.polish.space=false;$$('#selPop [data-pol]').forEach(x=>x.checked=!!S.polish[x.dataset.pol]);const hb=$('#selPop [data-hzb]');if(hb)hb.hidden=!S.polish.hz;syncHz();store.set('polish',S.polish);prev();if(S.autoCopy)copySel()});
   $('#spOthN')&&($('#spOthN').oninput=e=>{S.polish.othersLen=Math.max(1,+e.target.value||10);store.set('polish',S.polish);prev()});
   $('#spOthU')&&($('#spOthU').onchange=e=>{const c=$('#spOthC'),cu=e.target.value==='__c';c.hidden=!cu;
@@ -2179,7 +2194,7 @@ function bindPopUi(pop,v){
 };
   };
 }
-function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(polish(t),SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
+function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(SEL.edited!=null?SEL.edited:polish(t),SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
 async function putSelIntoField(sel){
   const t=$('#spText')?.value;if(!t||sel==='')return;const d=S.doc;
   if(!d.fields)d.fields={template_id:S.set.tpl||'',values:[],checked:false,edited:true};
