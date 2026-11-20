@@ -388,7 +388,19 @@ table.ot td:empty{background:var(--bg-2)}
 table.ot td.on{box-shadow:inset 0 0 0 2px var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
 table.ot td.low{background:#fff4e5}
 .tbanner{margin:6px 8px 0;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--accent) 9%,transparent);font-size:12.5px;display:flex;align-items:center;gap:8px}
-.fc{border:1px solid var(--line);border-radius:10px;background:var(--panel);transition:border-color .15s,box-shadow .15s}
+.fc{border:1px solid var(--line);border-radius:10px;background:var(--panel);transition:border-color .15s,box-shadow .15s;border-left:4px solid var(--fc,var(--line))}
+.fc .fdot{width:10px;height:10px;border-radius:3px;background:var(--fc);flex:0 0 auto;margin-right:2px}
+.fc.empty .fdot{background:transparent;border:1.5px dashed var(--fc)}
+.fc.loc{box-shadow:0 0 0 2px color-mix(in srgb,var(--fc) 45%,transparent)}
+.fc .fb.pg{background:color-mix(in srgb,var(--fc) 14%,transparent);color:var(--fc)}
+#overlay rect.fbx{fill:color-mix(in srgb,var(--fc) 16%,transparent)!important;stroke:var(--fc)!important;stroke-width:2px}
+#overlay rect.fbx.floc{fill:color-mix(in srgb,var(--fc) 30%,transparent)!important;stroke-width:3.5px}
+#overlay rect.fdim{opacity:.35}
+#flabels{position:absolute;inset:0;pointer-events:none}
+#flabels .fl{position:absolute;transform:translateY(-100%);pointer-events:auto;cursor:pointer;background:var(--fc);color:#fff;font-size:10px;font-weight:800;line-height:1;padding:2px 5px;border-radius:4px 4px 4px 0;opacity:.88;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+#flabels .fl.on{outline:2px solid #fff;outline-offset:-1px;z-index:1}
+#flabels .fl:hover,#flabels .fl.on{opacity:1}
+#flabels.small .fl:not(.on){display:none} /* 화면이 좁으면 고른 항목 이름표만 */
 .fc:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-2)}
 .fc.copied{border-color:var(--ok)}
 .fc.flash{box-shadow:0 0 0 3px var(--ok-bg)}
@@ -1570,8 +1582,22 @@ function zoomBy(f){const img=$('#pimg'),w=+img.dataset.w||1;const cur=S.zoom??($
 function drawBoxes(){
   const p=curPage(),svg=$('#overlay');
   if(!p?.result||!S.boxes){svg.innerHTML='';return}
-  svg.innerHTML=p.result.lines.map((l,i)=>l.box?`<rect class="bx ${l.conf!=null&&l.conf<LOW?'low':''} ${i===S.sel?'sel':''}" data-i="${i}" x="${l.box[0]}" y="${l.box[1]}" width="${l.box[2]}" height="${l.box[3]}"><title>${i+1}. ${esc(l.text)} (${l.conf??'-'})</title></rect>`:'').join('');
+  const fl=S.tab==='fields'&&S.fLocs?S.fLocs:null,own={}; // 항목 탭: 줄 → 그 줄을 쓰는 항목 (본문처럼 넓은 항목보다 좁은 항목 우선)
+  if(fl)fl.map((f,k)=>[f,k]).filter(([f])=>f&&f.page===S.page).sort((a,b)=>b[0].lines.length-a[0].lines.length).forEach(([f,k])=>f.lines.forEach(j=>own[j]=k));
+  const fv=S.doc?.fields?.values||[];
+  svg.innerHTML=p.result.lines.map((l,i)=>{if(!l.box)return'';const k=own[i];
+    return `<rect class="bx ${l.conf!=null&&l.conf<LOW?'low':''} ${i===S.sel?'sel':''} ${k!=null?'fbx':''} ${k!=null&&k===S.locI?'floc':''} ${fl&&k==null?'fdim':''}" data-i="${i}" ${k!=null?`style="--fc:${fCol(k)}"`:''} x="${l.box[0]}" y="${l.box[1]}" width="${l.box[2]}" height="${l.box[3]}"><title>${k!=null?`[${esc(fv[k]?.name||'')}] `:''}${i+1}. ${esc(l.text)} (${l.conf??'-'})</title></rect>`}).join('');
+  drawFLabels(fl,own,fv);
   svg.querySelectorAll('rect').forEach(r=>r.onclick=()=>{if(S.tool==='select'&&!SEL.space)return;const i=+r.dataset.i;selectLine(i,true);openLinePop(i)});
+}
+function drawFLabels(fl,own,fv){ // 항목 이름표 (항목 탭에서만)
+  const st=$('#stage');let box=$('#flabels');if(!box){box=document.createElement('div');box.id='flabels';st.append(box)}
+  if(!fl){box.innerHTML='';return}
+  box.classList.toggle('small',st.offsetWidth<520);
+  const L=curPage()?.result?.lines||[],seen=new Set();
+  box.innerHTML=Object.entries(own).sort((a,b)=>+a[0]-+b[0]).map(([i,k])=>{if(seen.has(k))return'';seen.add(k);const b=L[+i]?.box;if(!b)return'';
+    return `<span class="fl ${k===S.locI?'on':''}" data-k="${k}" style="--fc:${fCol(k)};left:${b[0]*100}%;top:${b[1]*100}%">${esc(fv[k]?.name||'')}</span>`}).join('');
+  box.querySelectorAll('.fl').forEach(el=>el.onclick=e=>{e.stopPropagation();const k=+el.dataset.k;$(`#fList .fc[data-i="${k}"]`)?.scrollIntoView({block:'nearest',behavior:'smooth'});locateField(k);renderFields()});
 }
 function selectLine(i,fromBox=false){
   S.sel=i;drawBoxes();
@@ -1950,13 +1976,24 @@ function renderFields(){
   $('#fStat').innerHTML=`<span>${found}/${vals.length}개 채움</span>·<span>${f.edited?'직접 수정함':'자동 채움'}</span>·<span>복사 ${S.copied.size}/${vals.length}</span>${other||f.template_id!==S.set.tpl?`<span class="fb miss">다른 템플릿(${esc(other?.name||'삭제됨')}) 값</span><button class="btn sm" id="fSwitch">이 템플릿으로 채우기</button>`:''}`;
   $('#fSwitch')?.addEventListener('click',()=>{if(!f.edited||confirm('직접 고친 값이 사라집니다. 다시 채울까요?'))ensureFields(true)});
   if(f.template_id==='__auto__'&&vals.length){$('#fStat').insertAdjacentHTML('beforeend',`<span style="flex:1"></span><button class="btn sm" id="fSaveTpl" title="찾은 항목 이름으로 템플릿을 만들어 다음 문서에도 같은 항목을 씁니다">${ic('check')}템플릿으로 저장</button>`);$('#fSaveTpl').onclick=saveAutoAsTemplate}
+  calcFLocs();
   list.innerHTML=vals.map((v,i)=>{
     const badge=v.note==='ai'?'<span class="fb ai">AI</span>':(!v.value?'<span class="fb miss">못 찾음</span>':'');
-    return `<div class="fc ${S.copied.has(i)?'copied':''} ${v.value?'':'empty'}" data-i="${i}"><div class="fh"><span class="fn">${esc(v.name)}</span>${badge}${S.copied.has(i)?'<span class="fb ok">복사됨</span>':''}<span class="sp"></span><button class="btn icon sm ghost" data-cp="${i}" title="이 항목 복사">${ic('copy')}</button></div><textarea class="fv" rows="1" data-v="${i}" spellcheck="false" placeholder="못 찾았습니다 — 직접 입력하거나 문서를 보고 채우세요">${esc(v.value)}</textarea></div>`}).join('');
-  $$('#fList .fv').forEach(t=>{autosize(t);t.oninput=()=>{vals[+t.dataset.v].value=t.value;autosize(t);t.closest('.fc').classList.toggle('empty',!t.value);saveFields()}});
+    const lc=S.fLocs?.[i];
+    return `<div class="fc ${S.copied.has(i)?'copied':''} ${v.value?'':'empty'} ${S.locI===i?'loc':''}" data-i="${i}" style="--fc:${fCol(i)}"><div class="fh"><span class="fdot" title="${lc?`문서 ${lc.page+1}쪽의 같은 색 박스`:'문서에서 위치를 못 찾음'}"></span><span class="fn">${esc(v.name)}</span>${lc&&lc.page!==S.page?`<span class="fb pg">${lc.page+1}쪽</span>`:''}${badge}${S.copied.has(i)?'<span class="fb ok">복사됨</span>':''}<span class="sp"></span><button class="btn icon sm ghost" data-cp="${i}" title="이 항목 복사">${ic('copy')}</button></div><textarea class="fv" rows="1" data-v="${i}" spellcheck="false" placeholder="못 찾았습니다 — 직접 입력하거나 문서를 보고 채우세요">${esc(v.value)}</textarea></div>`}).join('');
+  $$('#fList .fv').forEach(t=>{autosize(t);t.oninput=()=>{vals[+t.dataset.v].value=t.value;autosize(t);t.closest('.fc').classList.toggle('empty',!t.value);saveFields();reFLocs()}});
+  drawBoxes();
   $$('[data-cp]').forEach(b=>b.onclick=e=>{e.stopPropagation();copyField(+b.dataset.cp)});
   // 항목 클릭 → 문서에서 그 값이 있는 곳으로 이동
   $$('#fList .fc').forEach(c=>c.addEventListener('mousedown',e=>{if(e.target.closest('[data-cp]'))return;const i=+c.dataset.i;if(S.locI!==i||!e.target.closest('.fv'))locateField(i)}));
+}
+/* 항목별 색 — 오른쪽 항목 카드와 왼쪽 OCR 박스를 같은 색으로 */
+const FCOL=['#e8590c','#1c7ed6','#2f9e44','#ae3ec9','#e0a100','#0c8599','#d6336c','#5c940d','#7048e8','#c2255c'];
+const fCol=i=>FCOL[i%FCOL.length];
+const reFLocs=debounce(()=>{calcFLocs();drawBoxes()},400);
+function calcFLocs(){ // 항목마다 문서에서 찾은 쪽·줄
+  const vals=S.doc?.fields?.values;S.fLocs=null;if(!vals?.length||!S.doc.pages.some(p=>p.result))return;
+  S.fLocs=vals.map(v=>v.value?findInDoc(v.value,null):null);
 }
 /* 항목 값이 문서 어디에 있는지 찾아 왼쪽 화면을 그 위치로 이동·강조 */
 const normT=t=>(t||'').replace(/[\s·ㆍ.,:;'"“”‘’()\[\]「」<>〈〉\-–—_/|]/g,'');
@@ -1978,7 +2015,7 @@ function findInDoc(value,name){
   return tryFind(q,true)||(first&&first!==q?tryFind(first,true):null)||tryFind(q.slice(0,14),false)||tryFind(q.slice(-14),false)||(name?tryFind(normT(name),true):null);
 }
 function locateField(i){
-  const v=S.doc?.fields?.values?.[i];if(!v)return;S.locI=i;
+  const v=S.doc?.fields?.values?.[i];if(!v)return;S.locI=i;$$('#fList .fc').forEach(c=>c.classList.toggle('loc',+c.dataset.i===i));
   const f=findInDoc(v.value,v.value?null:v.name);
   if(!f){if(v.value)toast(`'${v.name}' 값을 문서에서 찾지 못했습니다`,true);return}
   const show=()=>{
@@ -2815,7 +2852,7 @@ function bind(){
   $('#runPage').onclick=runThisPage;
   $('#runAll').onclick=runAllPages;
   $('#runStop').onclick=()=>{S.stop=true;toast('현재 페이지까지만 처리하고 멈춥니다')};
-  $$('#tabs button[data-t]').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;$$('#tabs button[data-t]').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.t));if(S.tab==='fields')ensureFields();if(S.tab==='table')renderTable()});
+  $$('#tabs button[data-t]').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;setTimeout(drawBoxes,0);$$('#tabs button[data-t]').forEach(x=>x.classList.toggle('on',x===b));$$('.tab').forEach(t=>t.classList.toggle('on',t.id==='tab-'+b.dataset.t));if(S.tab==='fields')ensureFields();if(S.tab==='table')renderTable()});
   $$('#scopeSeg button').forEach(b=>b.onclick=()=>{S.scope=b.dataset.s;$$('#scopeSeg button').forEach(x=>x.classList.toggle('on',x===b))});
   $$('#expSeg button').forEach(b=>b.onclick=()=>{S.expScope=b.dataset.s;$$('#expSeg button').forEach(x=>x.classList.toggle('on',x===b))});
   $$('.tool[data-r]').forEach(b=>b.onclick=()=>runRefine('rule',b.dataset.r));
