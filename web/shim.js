@@ -369,13 +369,13 @@ function trimEdgeFragments(x, ox, oy, w, h) {
       delete p.pdf_text;
       return p;
     }
-    let rotated = 0;
+    let rotFixed = 0;
     if ((req.pre || {}).orient !== false) {
       const deg = await detectRotation(src);
-      if (deg) { src = await rotateStored(doc, idx, deg); rotated = deg; }
+      if (deg) { src = await rotateStored(doc, idx, deg); rotFixed = deg; }
     }
     const { canvas: pc, info } = preprocess(src, req.pre || {});
-    if (rotated) info.rotate_fixed = rotated;
+    if (rotFixed) info.rotate_fixed = rotFixed;
     await setBlob(doc.id, 'proc', pk(p), await toBlob(pc, 'image/jpeg', 0.9));
     const lang = ['kor+eng', 'kor', 'eng'].includes(req.lang) ? req.lang : 'kor+eng';
     const w = await worker(lang);
