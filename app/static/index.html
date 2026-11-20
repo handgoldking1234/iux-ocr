@@ -79,6 +79,31 @@ aside.left{background:var(--panel);border-right:1px solid var(--line);display:fl
 .drop small{color:var(--text-3);font-size:11.5px}
 .sec-h{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
 .docs{overflow:auto;padding:0 8px 8px;max-height:34%}
+/* 고친 내용 학습 */
+.lbadge{position:relative}
+.lbadge[data-n]:not([data-n=""])::after{content:attr(data-n);position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--warn);color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center}
+.learn h5{font-size:13px;font-weight:800;margin-top:6px;display:flex;align-items:center;gap:8px}.learn h5 small{font-weight:600;color:var(--text-3);font-size:11.5px}
+.learn .lsum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.learn .lsum>div{background:var(--panel-2);border-radius:10px;padding:10px 12px}
+.learn .lsum .k{font-size:11.5px;color:var(--text-3);font-weight:700}.learn .lsum .v{font-size:20px;font-weight:800;margin-top:2px;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.learn .lsum .v small{font-size:11.5px;color:var(--text-3);font-weight:600}
+.learn b.bad,.learn .dn{color:var(--danger,#d33)}.learn .dn{font-style:normal;font-weight:800;margin-left:3px}
+.learn .lnote{font-size:12px;line-height:1.6}
+.learn .lver{display:flex;flex-direction:column;gap:6px}
+.learn .vr{display:grid;grid-template-columns:44px 1fr auto auto;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.learn .vr.on{border-color:var(--accent);background:var(--accent-2)}
+.learn .vr .vn{font-weight:800;font-size:15px}.learn .vr .vm{display:flex;flex-direction:column;min-width:0}.learn .vr .vm b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.learn .vr .vm small{font-size:11.5px;color:var(--text-3)}
+.learn .vr .vs{display:flex;flex-direction:column;align-items:flex-end;font-size:14px}.learn .vr .vs small{font-size:11px;color:var(--text-3)}
+.learn .vr .va{display:flex;gap:4px;align-items:center}.learn .pill{font-size:11px;font-weight:800;color:var(--accent-ink);background:var(--panel);border:1px solid var(--accent);border-radius:99px;padding:3px 9px}
+.learn .lio{display:flex;flex-direction:column;gap:8px}.learn .ck{display:inline-flex;align-items:center;gap:5px;font-size:12.5px}.learn .ck small{color:var(--text-3)}
+.learn .lq{height:32px;border:1px solid var(--line);border-radius:8px;padding:0 10px!important;font-size:13px}
+.learn .lrules,.learn .lsamp{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px}
+.learn .rr,.learn .sr{display:grid;grid-template-columns:18px minmax(0,1fr) 14px minmax(0,1fr) 84px;align-items:center;gap:8px;padding:5px 8px;border-radius:7px;font-size:12.5px}
+.learn .sr{grid-template-columns:minmax(0,1fr) 14px minmax(0,1fr) 28px}.learn .rr small{text-align:right}
+.learn .rr:hover,.learn .sr:hover{background:var(--panel-2)}.learn .rr.off{opacity:.5}.learn .rr.off .t{text-decoration:line-through}
+.learn .f{color:var(--text-2);word-break:break-all}.learn .t{font-weight:700;word-break:break-all}.learn .ar{color:var(--accent);font-weight:800}.learn .rr small{color:var(--text-3);font-size:11px;white-space:nowrap}
+.learn .lhist{max-height:180px;overflow:auto;font-size:12px;line-height:1.7;color:var(--text-2)}.learn .lhist span{color:var(--text-3);margin-right:8px;font-variant-numeric:tabular-nums}
+@media (max-width:760px){.learn .lsum{grid-template-columns:1fr 1fr 1fr}.learn .lsum .v{font-size:16px}.learn .vr{grid-template-columns:36px 1fr;row-gap:6px}.learn .vr .vs{align-items:flex-start;flex-direction:row;gap:6px;grid-column:2}.learn .vr .va{grid-column:2}}
 /* 문서 검색 */
 .dsearch{position:relative;margin:2px 12px 8px;flex:0 0 auto}
 .dsearch .si svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-3);pointer-events:none}
@@ -668,6 +693,7 @@ body.ocrfold .ocrbox .eng-mini b{color:var(--text-2)}
     <div class="hbtns">
       <button class="btn icon ghost tgl tglR" id="tglR" title="오른쪽 패널 접기/펴기 ( ] )"></button>
       <button class="btn" id="btnBatch" data-ic="files">폴더 일괄 처리</button>
+      <button class="btn icon ghost lbadge" id="btnLearn" title="고친 내용 학습" data-ic="grad"></button>
       <button class="btn icon ghost" id="btnTheme" title="다크 모드" data-ic="moon"></button>
       <button class="btn icon ghost" id="btnHelp" title="엔진 설치 안내" data-ic="info"></button>
     </div>
@@ -994,6 +1020,12 @@ body.ocrfold .ocrbox .eng-mini b{color:var(--text-2)}
 </div>
 
 <!-- 엔진 안내 -->
+<div class="modal" id="mLearn">
+  <div class="mbox" style="width:720px">
+    <div class="mh"><span data-ic="grad"></span><h3>고친 내용 학습 <small class="muted" style="font-weight:600;font-size:12px">버전 · 되돌리기 · 내보내기/불러오기</small></h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
+    <div class="mb learn" id="learnBody"></div>
+  </div>
+</div>
 <div class="modal" id="mHelp">
   <div class="mbox">
     <div class="mh"><span data-ic="cpu"></span><h3>OCR 엔진 상태 · 설치 안내</h3><button class="btn icon ghost" data-close data-ic="x"></button></div>
@@ -1009,6 +1041,9 @@ body.ocrfold .ocrbox .eng-mini b{color:var(--text-2)}
 "use strict";
 /* ---------- 아이콘 (Lucide, 오프라인 인라인) ---------- */
 const IC={
+ edit:'<path d="M12 20h9"/><path d="M16.38 3.62a1 1 0 0 1 3 3L7.37 18.64a2 2 0 0 1-.86.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.86z"/>',
+ upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+ grad:'<path d="M21.42 10.92a1 1 0 0 0-.02-1.84L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.83l8.57 3.91a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>',
  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
  files:'<path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/>',
  moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
@@ -1152,6 +1187,166 @@ async function loadDocs(selectId){
   const mb=$('#mnDocs');if(mb){mb.hidden=!S.docs.length;mb.textContent=S.docs.length}
   if(selectId)openDoc(selectId);
 }
+/* ---------- 고친 내용 학습 (규칙 학습 · 버전 · 되돌리기 · 내보내기/불러오기 · 기록) ----------
+   딥러닝 모델을 다시 훈련하는 것이 아니라, 사용자가 고친 '원래 인식 글 → 고친 글' 예시를 모아
+   낱말 단위 고침 규칙을 만들고 복사할 때 자동으로 적용한다. 버전마다 모은 예시로 성능(고침률)을 재서
+   나빠지면 바로 이전 버전으로 돌릴 수 있다. 저장: 이 브라우저(PC) 안 (localStorage). */
+const LEARN_FMT='iux-ocr-learn';
+const L=Object.assign({samples:{},versions:[],active:null,hist:[],seq:0},store.get('learn',{}));
+const saveLearn=debounce(()=>{store.set('learn',L);updLearnBadge()},300);
+function lHist(msg){L.hist.unshift({at:Date.now(),msg});L.hist=L.hist.slice(0,300)}
+function lActive(){return L.versions.find(v=>v.id===L.active)||null}
+const lNum=s=>/^[\d\s.,:\-~/()%]*$/.test(s);
+/* 낱말 비교(LCS)로 바뀐 부분을 규칙으로 */
+function diffRules(src,dst){
+  const a=String(src).trim().split(/\s+/).filter(Boolean),b=String(dst).trim().split(/\s+/).filter(Boolean);
+  if(!a.length||!b.length||a.length>120||b.length>120)return[];
+  const n=a.length,m=b.length,D=Array.from({length:n+1},()=>new Int16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)D[i][j]=a[i]===b[j]?D[i+1][j+1]+1:Math.max(D[i+1][j],D[i][j+1]);
+  const ops=[];let i=0,j=0;
+  while(i<n||j<m){if(i<n&&j<m&&a[i]===b[j]){ops.push(['=',a[i]]);i++;j++}else if(j<m&&(i>=n||D[i][j+1]>=D[i+1][j])){ops.push(['+',b[j]]);j++}else{ops.push(['-',a[i]]);i++}}
+  const out=[];
+  for(let k=0;k<ops.length;){
+    if(ops[k][0]==='='){k++;continue}
+    let fa=[],tb=[],s=k;while(k<ops.length&&ops[k][0]!=='='){if(ops[k][0]==='-')fa.push(ops[k][1]);else tb.push(ops[k][1]);k++}
+    if(!fa.length){ // 넣기만 했으면 앞(없으면 뒤) 낱말을 붙여 규칙으로
+      const pv=s>0?ops[s-1]:null,nx=ops[k]&&ops[k][0]==='='?ops[k]:null;
+      if(pv&&pv[0]==='='){fa=[pv[1]];tb=[pv[1],...tb]}else if(nx){fa=[nx[1]];tb=[...tb,nx[1]];k++}else continue}
+    if(!tb.length){const pv=s>0?ops[s-1]:null;if(pv&&pv[0]==='='){fa=[pv[1],...fa];tb=[pv[1]]}else continue}
+    for(const[ff,tt]of splitChunk(fa,tb)){ // 글자가 같은 자리에서 끊어 작은 규칙으로 (더 잘 들어맞게)
+      const from=ff.join(' '),to=tt.join(' ');
+      if(from===to||from.replace(/\s/g,'').length<2&&to.replace(/\s/g,'').length<2)continue;
+      if(lNum(from)&&lNum(to))continue; // 숫자만 바뀐 건 내용 차이일 수 있어 배우지 않음
+      out.push({from,to})}
+  }
+  return out;
+}
+function splitChunk(fa,tb){ // 발 전 을 기원 합 → 발전을 기원합니다.  =>  [발 전 을→발전을] [기원 합→기원합니다.]
+  const A=fa.join(''),B=tb.join('');let pre=0;while(pre<A.length&&pre<B.length&&A[pre]===B[pre])pre++;
+  const cum=w=>{let c=0;return w.map(x=>c+=x.length)},ca=cum(fa),cb=cum(tb),cuts=ca.filter(x=>x<=pre&&cb.includes(x)&&x<A.length&&x<B.length);
+  if(!cuts.length)return[[fa,tb]];
+  const res=[];let ia=0,ib=0;for(const c of cuts){const ja=ca.indexOf(c)+1,jb=cb.indexOf(c)+1;res.push([fa.slice(ia,ja),tb.slice(ib,jb)]);ia=ja;ib=jb}
+  res.push([fa.slice(ia),tb.slice(ib)]);return res.filter(([x,y])=>x.length&&y.length);
+}
+function rulesFromSamples(){
+  const M=new Map();
+  for(const sm of Object.values(L.samples))for(const r of diffRules(sm.src,sm.dst)){const k=r.from+'\u0001'+r.to,o=M.get(k)||{from:r.from,to:r.to,count:0,on:true,src:'고침'};o.count++;M.set(k,o)}
+  return[...M.values()];
+}
+function mergeRules(base,add){ // 같은 규칙은 횟수를 크게, 같은 원문에 다른 고침이면 횟수 많은 쪽만 켬
+  const M=new Map();for(const r of base)M.set(r.from+'\u0001'+r.to,{...r});
+  for(const r of add){const k=r.from+'\u0001'+r.to,o=M.get(k);if(o){o.count=Math.max(o.count,r.count||1)}else M.set(k,{from:r.from,to:r.to,count:r.count||1,on:r.on!==false,src:r.src||'고침'})}
+  const rs=[...M.values()],by=new Map();for(const r of rs){if(!r.on)continue;const o=by.get(r.from);if(!o)by.set(r.from,r);else if((r.count||1)>(o.count||1)){o.on=false;by.set(r.from,r)}else r.on=false}
+  return rs.sort((x,y)=>(y.count||1)-(x.count||1)||x.from.localeCompare(y.from));
+}
+const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+function applyRules(t,rules){
+  if(!rules?.length||t==null)return t;let s=String(t);
+  for(const r of rules.filter(r=>r.on).sort((x,y)=>y.from.length-x.from.length)){
+    const re=new RegExp('(^|[\\s(「"\'])'+r.from.split(' ').map(reEsc).join('\\s+')+'(?=$|[\\s.,!?:;)」"\'])','gm');
+    s=s.replace(re,(m,p)=>p+r.to);
+  }
+  return s;
+}
+function lev(a,b){if(a===b)return 0;const m=b.length;let p=Array.from({length:m+1},(_,j)=>j);for(let i=1;i<=a.length;i++){const c=[i];for(let j=1;j<=m;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c}return p[m]}
+/* 성능: 모은 예시에 규칙을 적용했을 때 고쳐야 할 글자 수가 얼마나 줄었나(+) 늘었나(-) */
+function scoreRules(rules){
+  const sm=Object.values(L.samples).sort((a,b)=>b.at-a.at).slice(0,400);if(!sm.length)return null;
+  let base=0,after=0,exact=0;for(const s of sm){const o=applyRules(s.src,rules);base+=lev(s.src,s.dst);after+=lev(o,s.dst);if(o===s.dst)exact++}
+  return{gain:base?Math.round((base-after)/base*1000)/10:0,exact:Math.round(exact/sm.length*100),n:sm.length,at:Date.now()};
+}
+function lNewVersion(rules,source,note){
+  const n=(L.versions.reduce((a,v)=>Math.max(a,v.n),0))+1,v={id:'v'+n+'_'+Date.now().toString(36),n,at:Date.now(),source,note:note||'',rules,score:scoreRules(rules)};
+  L.versions.unshift(v);L.active=v.id;L.learnedAt=Date.now();lHist(`v${n} 만듦 · ${source} · 규칙 ${rules.length}개${v.score?` · 고침률 ${v.score.gain}%`:''}`);saveLearn();return v}
+/* 예시 모으기: 줄을 고칠 때(원래 인식 글을 기억해 둠) · 복사될 글을 직접 고쳐 복사할 때 */
+function lRecord(key,src,dst,where){
+  src=String(src??'').trim();dst=String(dst??'').trim();if(!src&&!dst)return;
+  if(src===dst){if(L.samples[key]){delete L.samples[key];saveLearn()}return}
+  if(src.length>400||dst.length>400)return;
+  L.samples[key]={src,dst,at:Date.now(),where:where||''};
+  const ks=Object.keys(L.samples);if(ks.length>2000){ks.sort((a,b)=>L.samples[a].at-L.samples[b].at).slice(0,ks.length-2000).forEach(k=>delete L.samples[k])}
+  saveLearn();
+}
+function lNewCount(){return Object.values(L.samples).filter(s=>s.at>(L.learnedAt||0)).length}
+function updLearnBadge(){const b=$('#btnLearn');if(!b)return;const n=lNewCount();b.dataset.n=n>99?'99+':n||'';b.title=`고친 내용 학습${n?` — 새로 고친 예시 ${n}개 (학습 전)`:''}`}
+function lDownload(obj,name){const u=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:'application/json'}));const a=Object.assign(document.createElement('a'),{href:u,download:name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}
+function lExport(v){
+  v=v||lActive();if(!v){toast('내보낼 버전이 없습니다. 먼저 학습하세요.');return}
+  const withS=$('#lExpS')?.checked,d=new Date();
+  lDownload({format:LEARN_FMT,ver:1,exported_at:d.toISOString(),from:'IUX OCR',version:{n:v.n,at:v.at,source:v.source,note:v.note,score:v.score,rules:v.rules},samples:withS?Object.values(L.samples).map(({src,dst,at})=>({src,dst,at})):undefined},
+    `IUX-OCR-학습-v${v.n}-${d.toISOString().slice(0,10)}.json`);
+  lHist(`v${v.n} 내보냄${withS?' (고친 예시 포함)':''}`);saveLearn();
+}
+async function lImport(file){
+  let o;try{o=JSON.parse(await file.text())}catch(e){toast('학습 파일을 읽지 못했습니다 (JSON 아님)');return}
+  const rules=(o?.version?.rules||o?.rules||[]).filter(r=>r&&typeof r.from==='string'&&typeof r.to==='string'&&r.from!==r.to).map(r=>({from:r.from.slice(0,200),to:r.to.slice(0,200),count:Math.max(1,+r.count||1),on:r.on!==false,src:'불러옴'}));
+  if(o?.format!==LEARN_FMT&&!rules.length){toast('IUX OCR 학습 파일이 아닙니다');return}
+  let addS=0;if(Array.isArray(o.samples)&&$('#lImpS')?.checked)o.samples.forEach((s,k)=>{if(typeof s?.src==='string'&&typeof s?.dst==='string'){L.samples['imp:'+file.name+':'+k]={src:s.src,dst:s.dst,at:s.at||Date.now(),where:'불러옴'};addS++}});
+  const mode=$('#lImpMode')?.value||'merge',cur=lActive();
+  const merged=mode==='replace'?mergeRules([],rules):mergeRules(cur?cur.rules:[],rules);
+  const before=cur?.score?.gain,v=lNewVersion(merged,`불러오기(${mode==='replace'?'바꿈':'합침'}) · ${file.name}`,`규칙 ${rules.length}개${addS?` · 예시 ${addS}개`:''}`);
+  renderLearn();
+  if(before!=null&&v.score&&v.score.gain<before)toast(`불러온 뒤 고침률이 ${before}% → ${v.score.gain}%로 떨어졌습니다. 필요하면 '이전 버전으로'를 누르세요.`);
+  else toast(`v${v.n}을 만들어 사용 중입니다 (규칙 ${merged.length}개)`);
+}
+function lLearnNow(){
+  const fresh=rulesFromSamples();if(!fresh.length){toast('아직 학습할 고친 예시가 없습니다. 인식 글을 고치면 자동으로 모입니다.');return}
+  const cur=lActive(),keep=cur?cur.rules.filter(r=>r.src==='불러옴'):[];
+  const v=lNewVersion(mergeRules(keep,fresh).map(r=>{const old=cur?.rules.find(x=>x.from===r.from&&x.to===r.to);return old&&!old.on?{...r,on:false}:r}),'학습',`예시 ${Object.keys(L.samples).length}개`);
+  renderLearn();const pv=L.versions[1];
+  toast(pv?.score&&v.score&&v.score.gain<pv.score.gain?`v${v.n}: 고침률 ${pv.score.gain}% → ${v.score.gain}% (떨어짐)`:`v${v.n} 학습 완료 · 규칙 ${v.rules.length}개`);
+}
+function lUse(id){const v=L.versions.find(x=>x.id===id);L.active=v?v.id:null;lHist(v?`v${v.n} 사용`:'학습 끔 (원래대로)');saveLearn();renderLearn();toast(v?`v${v.n}을 사용합니다`:'학습한 고침을 끄고 원래대로 복사합니다')}
+function lDel(id){const v=L.versions.find(x=>x.id===id);if(!v||!confirm(`v${v.n}을 지울까요? 되돌릴 수 없습니다.`))return;L.versions=L.versions.filter(x=>x!==v);if(L.active===id){L.active=L.versions[0]?.id||null}lHist(`v${v.n} 지움`);saveLearn();renderLearn()}
+function lPrev(){const i=L.versions.findIndex(v=>v.id===L.active);const p=L.versions[i+1];if(p)lUse(p.id)}
+const lDate=t=>{const d=new Date(t);return `${d.getMonth()+1}.${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
+function renderLearn(){
+  const box=$('#learnBody');if(!box)return;const act=lActive(),nS=Object.keys(L.samples).length,nNew=lNewCount(),q=($('#lRuleQ')?.value||'').trim();
+  const sc=s=>s?`<b class="${s.gain<0?'bad':''}">${s.gain>0?'+':''}${s.gain}%</b><small>정확 ${s.exact}%</small>`:'<small>—</small>';
+  box.innerHTML=`
+  <div class="lsum"><div><div class="k">모은 고친 예시</div><div class="v">${nS}<small>${nNew?` (새로 ${nNew})`:''}</small></div></div>
+    <div><div class="k">사용 중</div><div class="v">${act?`v${act.n}<small> 규칙 ${act.rules.filter(r=>r.on).length}개</small>`:'<small>없음 (원래대로)</small>'}</div></div>
+    <div><div class="k">고침률</div><div class="v">${act?sc(act.score):'<small>—</small>'}</div></div></div>
+  <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="lLearn">${ic('sparkles')}지금 학습 → 새 버전</button>
+    ${act&&L.versions.findIndex(v=>v.id===L.active)<L.versions.length-1?`<button class="btn" id="lPrevB">${ic('undo')}이전 버전으로</button>`:''}
+    ${act?`<button class="btn" id="lOff">학습 끄기</button>`:''}</div>
+  <p class="muted lnote">인식 글을 고치면(오른쪽 텍스트 줄·선택 팝업·복사될 글) '원래 글 → 고친 글'이 자동으로 모입니다. <b>지금 학습</b>을 누르면 낱말 단위 고침 규칙을 새 버전으로 만들고, 복사할 때 자동으로 적용합니다(팝업의 <b>학습한 고침</b>). 고침률은 모은 예시에 규칙을 적용했을 때 고쳐야 할 글자가 얼마나 줄었는지입니다. 떨어지면 이전 버전으로 바로 돌리세요.</p>
+
+  <h5>버전</h5>
+  <div class="lver">${L.versions.length?L.versions.map((v,k)=>{const pv=L.versions[k+1],down=pv?.score&&v.score&&v.score.gain<pv.score.gain;return `<div class="vr ${v.id===L.active?'on':''}">
+      <span class="vn">v${v.n}</span><span class="vm"><b>${esc(v.source)}</b><small>${lDate(v.at)} · 규칙 ${v.rules.length}개${v.note?' · '+esc(v.note):''}</small></span>
+      <span class="vs">${sc(v.score)}${down?'<em class="dn" title="바로 전 버전보다 떨어짐">↓</em>':''}</span>
+      <span class="va">${v.id===L.active?'<span class="pill">사용 중</span>':`<button class="btn sm" data-luse="${v.id}">사용</button>`}<button class="btn sm ghost icon" data-lexp="${v.id}" title="이 버전 내보내기">${ic('download')}</button><button class="btn sm ghost icon" data-ldel="${v.id}" title="지우기">${ic('trash')}</button></span></div>`}).join(''):'<div class="empty-side">아직 버전이 없습니다. 고친 뒤 <b>지금 학습</b>을 누르세요.</div>'}</div>
+
+  <h5>내보내기 · 불러오기</h5>
+  <div class="lio">
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="lExpB">${ic('download')}사용 중 버전 내보내기</button><label class="ck"><input type="checkbox" id="lExpS">고친 예시도 넣기 <small>(문서 글이 들어가니 주의)</small></label></div>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" id="lImpB">${ic('upload')}학습 파일 불러오기</button><select id="lImpMode" style="width:auto"><option value="merge">지금 규칙에 합치기</option><option value="replace">불러온 규칙으로 바꾸기</option></select><label class="ck"><input type="checkbox" id="lImpS" checked>예시도 가져오기</label><input type="file" id="lImpF" accept=".json,application/json" hidden></div>
+    <p class="muted lnote">다른 PC·다른 사람이 학습한 파일을 불러오면 <b>새 버전</b>으로 만들어지므로, 성능이 떨어지면 이전 버전을 눌러 바로 뺄 수 있습니다.</p>
+  </div>
+
+  <h5>사용 중 규칙 ${act?`<small>${act.rules.length}개 · 끄면 그 규칙만 빠짐</small>`:''}</h5>
+  ${act?`<input type="search" id="lRuleQ" placeholder="규칙 찾기" value="${esc(q)}" class="lq">
+  <div class="lrules">${act.rules.filter(r=>!q||r.from.includes(q)||r.to.includes(q)).slice(0,300).map(r=>{const k=act.rules.indexOf(r);return `<label class="rr ${r.on?'':'off'}"><input type="checkbox" data-lrule="${k}" ${r.on?'checked':''}><span class="f">${esc(r.from)}</span><span class="ar">→</span><span class="t">${esc(r.to)}</span><small>${r.src==='불러옴'?'불러옴 · ':''}${r.count}번</small></label>`}).join('')||'<div class="empty-side">규칙이 없습니다.</div>'}</div>`:'<div class="empty-side">사용 중인 버전이 없습니다.</div>'}
+
+  <h5>모은 고친 예시 <small>${nS}개</small>${nS?'<button class="btn sm ghost" id="lClrS" style="margin-left:auto">모두 지우기</button>':''}</h5>
+  <div class="lsamp">${Object.entries(L.samples).sort((a,b)=>b[1].at-a[1].at).slice(0,80).map(([k,s])=>`<div class="sr"><span class="f">${esc(s.src)}</span><span class="ar">→</span><span class="t">${esc(s.dst)}</span><button class="btn sm ghost icon" data-lsdel="${esc(k)}" title="이 예시 빼기">${ic('x')}</button></div>`).join('')||'<div class="empty-side">아직 없습니다.</div>'}</div>
+
+  <h5>기록</h5>
+  <div class="lhist">${L.hist.slice(0,60).map(h=>`<div><span>${lDate(h.at)}</span>${esc(h.msg)}</div>`).join('')||'<div class="empty-side">기록이 없습니다.</div>'}</div>`;
+  paintIcons(box);
+  $('#lLearn').onclick=lLearnNow;$('#lPrevB')&&($('#lPrevB').onclick=lPrev);$('#lOff')&&($('#lOff').onclick=()=>lUse(null));
+  $('#lExpB').onclick=()=>lExport();$('#lImpB').onclick=()=>$('#lImpF').click();$('#lImpF').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)lImport(f)};
+  $$('#learnBody [data-luse]').forEach(b=>b.onclick=()=>lUse(b.dataset.luse));
+  $$('#learnBody [data-lexp]').forEach(b=>b.onclick=()=>lExport(L.versions.find(v=>v.id===b.dataset.lexp)));
+  $$('#learnBody [data-ldel]').forEach(b=>b.onclick=()=>lDel(b.dataset.ldel));
+  $$('#learnBody [data-lrule]').forEach(c=>c.onchange=()=>{const a=lActive(),r=a.rules[+c.dataset.lrule];r.on=c.checked;a.score=scoreRules(a.rules);lHist(`v${a.n} 규칙 ${c.checked?'켬':'끔'}: ${r.from} → ${r.to}`);saveLearn();renderLearn()});
+  $$('#learnBody [data-lsdel]').forEach(b=>b.onclick=()=>{delete L.samples[b.dataset.lsdel];saveLearn();renderLearn()});
+  $('#lClrS')&&($('#lClrS').onclick=()=>{if(!confirm('모은 고친 예시를 모두 지울까요? (버전·규칙은 그대로)'))return;L.samples={};lHist('고친 예시 모두 지움');saveLearn();renderLearn()});
+  $('#lRuleQ')&&($('#lRuleQ').oninput=debounce(()=>{const p=$('#lRuleQ').selectionStart;renderLearn();const i=$('#lRuleQ');i.focus();i.setSelectionRange(p,p)},250));
+}
+function openLearn(){renderLearn();$('#mLearn').classList.add('on')}
+
 /* ---------- 문서 검색: 이름 + 인식한 글자 (띄어쓰기 무시) ---------- */
 const DCACHE=new Map(); // 문서 id → 전체 문서 (loadDocs 때 비움)
 const nsp=t=>String(t||'').replace(/\s+/g,'').toLowerCase();
@@ -1487,6 +1682,8 @@ function setLineText(i,t,from){
     const cs=(r.tables?.[ti]?.cells||[]).filter(c=>c.line===i).sort((a,b)=>a.c-b.c),parts=t.split(/\s*\|\s*/);
     if(cs.length&&parts.length===cs.length)cs.forEach((c,k)=>{c.text=parts[k];const td=$(`#tblBody td[data-t="${ti}"][data-k="${c.r}-${c.c}"]`);if(td&&document.activeElement!==td)td.textContent=parts[k]});
   }
+  if(r.lines[i].ocr==null&&r.lines[i].text!==t)r.lines[i].ocr=r.lines[i].text; // 처음 인식한 글 기억 (학습용)
+  if(r.lines[i].ocr!=null&&S.doc)lRecord(`${S.doc.id}:${S.page}:${i}`,r.lines[i].ocr,t,'줄');
   if(r.lines[i].text!==t)delete r.lines[i].check;r.lines[i].text=t;if(!diverged)r.text=linesToText(r.lines);r.edited=true;savePage();
   if(from!=='list'){const tx=$(`.ln[data-i="${i}"] .tx`);if(tx&&document.activeElement!==tx)tx.textContent=t}
   const rc=$(`#overlay rect[data-i="${i}"] title`);if(rc)rc.textContent=`${i+1}. ${t}`;
@@ -2105,8 +2302,9 @@ function korSpace(line){
      .replace(/(있|없|하|되)(을|는|은)(때|경우|바|데)(?=[가-힣\s.,]|$)/g,'$1$2 $3').replace(/(할|될|한|된|하는|되는)(때|경우|바)(?=[\s.,에는도]|$)/g,'$1 $2')
      .replace(/위 하여/g,'위하여').replace(/ +/g,' ');
   return l.trim()}
-function polish(t){
+function polish(t,noLearn){
   const P=S.polish;if(t==null)return t;let s=String(t);
+  const LA=!noLearn&&P.learn!==false&&lActive();if(LA)s=applyRules(s,LA.rules); // 학습한 고침 먼저
   if(P.oneline)s=s.replace(/\s*\n+\s*/g,' ');
   if(P.nospace)s=s.split('\n').map(l=>l.replace(/[ \t\u3000]+/g,'')).join('\n');
   else if(P.space)s=s.split('\n').map(korSpace).join('\n');
@@ -2186,7 +2384,7 @@ function showSelPop(text,label){
     <div class="row bigbtns"><button class="btn primary big" id="spCopy" ${text===null?'disabled':''}>${ic('copy')}복사 <small>Ctrl+C</small></button><button class="btn big" id="spRe" title="선택 영역만 잘라서 다시 인식">${ic('refresh')}영역 다시 인식</button></div>
     </div>
     ${text===null?'':`<div class="pol" title="복사할 때 글자를 다듬습니다 (원본 인식 결과는 그대로)">
-      <label title="자주 틀리는 맞춤법·인식 오타 고치기 (됬→됐, 슴니다→습니다, 2O26→2026, 2026 .11 .16 → 2026. 11. 16.)"><input type="checkbox" data-pol="spell" ${P.spell?'checked':''}>맞춤법</label>
+      ${lActive()?`<label title="고친 내용 학습(v${lActive().n})의 규칙 ${lActive().rules.filter(r=>r.on).length}개를 적용 — 머리의 학습 버튼에서 버전 관리"><input type="checkbox" data-pol="learn" ${P.learn!==false?'checked':''}>학습한 고침 <small>v${lActive().n}</small></label>`:''}<label title="자주 틀리는 맞춤법·인식 오타 고치기 (됬→됐, 슴니다→습니다, 2O26→2026, 2026 .11 .16 → 2026. 11. 16.)"><input type="checkbox" data-pol="spell" ${P.spell?'checked':''}>맞춤법</label>
       <label title="낱자로 벌어진 글 붙이기(출 석 부 → 출석부) · 조사 붙이기(기관 의 → 기관의) · 자주 틀리는 띄어쓰기(아래와같이 → 아래와 같이, 할수있다 → 할 수 있다) · 문장부호·날짜·전화번호 정리"><input type="checkbox" data-pol="space" ${P.space?'checked':''}>띄어쓰기 정리</label>
       <label title="띄어쓰기를 모두 없애고 붙여서"><input type="checkbox" data-pol="nospace" ${P.nospace?'checked':''}>붙여 쓰기</label>
       <label title="여러 줄을 한 줄로 이어서"><input type="checkbox" data-pol="oneline" ${P.oneline?'checked':''}>한 줄로</label>
@@ -2255,7 +2453,8 @@ function bindPopUi(pop,v){
 };
   };
 }
-function copySel(){const t=$('#spText')?.value;if(t==null)return;copyText(SEL.edited!=null?SEL.edited:polish(t),SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
+function copySel(){const t=$('#spText')?.value;if(t==null)return;
+  if(SEL.edited!=null){const src=polish(t,true);lRecord('copy:'+src.slice(0,80),src,SEL.edited,'복사')}copyText(SEL.edited!=null?SEL.edited:polish(t),SEL.line!=null?`${SEL.line+1}번째 줄을 복사했습니다`:'선택 영역의 글자를 복사했습니다')}
 async function putSelIntoField(sel){
   const t=$('#spText')?.value;if(!t||sel==='')return;const d=S.doc;
   if(!d.fields)d.fields={template_id:S.set.tpl||'',values:[],checked:false,edited:true};
@@ -2533,6 +2732,7 @@ function bind(){
       rz.onpointerup=()=>{rz.onpointermove=rz.onpointerup=null;rz.classList.remove('on');document.body.classList.remove('rszing');store.set('rw',parseInt(app.style.getPropertyValue('--rwu'))||0);syncTools()}};
     rz.ondblclick=()=>{setW(0);store.set('rw',0)};
   }addEventListener('resize',syncTools);
+  $('#btnLearn').onclick=openLearn;updLearnBadge();
   $('#docQ').oninput=docSearch;
   $('#docQ').onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();$('#docQ').value='';runDocSearch()}if(e.key==='Enter'){e.preventDefault();$('#docHits .dh-l, #docHits .dh-h')?.click()}};
   $('#docQx').onclick=()=>{$('#docQ').value='';runDocSearch();$('#docQ').focus()};
