@@ -79,6 +79,29 @@ aside.left{background:var(--panel);border-right:1px solid var(--line);display:fl
 .drop small{color:var(--text-3);font-size:11.5px}
 .sec-h{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;font-size:11.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
 .docs{overflow:auto;padding:0 8px 8px;max-height:34%}
+/* 문서 검색 */
+.dsearch{position:relative;margin:2px 12px 8px;flex:0 0 auto}
+.dsearch .si svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-3);pointer-events:none}
+.dsearch input{width:100%;height:34px;border:1px solid var(--line);border-radius:99px;background:var(--panel-2);padding:0 30px 0 32px!important;font-size:13px;color:var(--text);outline:none}
+.dsearch input::-webkit-search-cancel-button{display:none}
+.dsearch input:focus{border-color:var(--accent);background:var(--panel);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+.dsearch #docQx{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;border:0;background:var(--line);color:var(--text-2);font-size:14px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.dsearch #docQx[hidden]{display:none}
+.dhits{overflow:auto;padding:0 8px 10px;flex:1 1 auto;min-height:120px}
+.dhits .dh-st{font-size:11.5px;color:var(--text-3);padding:2px 6px 6px;display:flex;align-items:center;gap:5px}
+.dhits .dh-doc{margin-bottom:8px}
+.dhits .dh-h{display:flex;align-items:center;gap:6px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700}
+.dhits .dh-h svg{width:15px;height:15px;color:var(--text-3);flex:0 0 auto}
+.dhits .dh-h .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dhits .dh-h .c{font-size:11px;color:var(--text-3);font-weight:700}
+.dhits .dh-h:hover,.dhits .dh-l:hover{background:var(--panel-2)}
+.dhits .dh-h.on{background:var(--accent-2)}
+.dhits .dh-l{display:flex;gap:7px;padding:5px 8px 5px 29px;border-radius:7px;cursor:pointer;font-size:12.5px;line-height:1.45;color:var(--text-2)}
+.dhits .dh-l.on{background:var(--accent-2);color:var(--text)}
+.dhits .dh-l .pg{flex:0 0 auto;font-size:10.5px;font-weight:800;color:var(--accent-ink);background:var(--accent-2);border-radius:5px;padding:1px 5px;height:fit-content;margin-top:1px}
+.dhits .dh-l .tx{min-width:0;word-break:break-all}
+.dhits mark{background:color-mix(in srgb,var(--warn) 35%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+.dhits .dh-more{font-size:11.5px;color:var(--text-3);padding:2px 8px 2px 29px}
 .doc{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;cursor:pointer;position:relative}
 .doc:hover{background:var(--panel-2)}
 .doc.on{background:var(--accent-2)}
@@ -660,6 +683,8 @@ body.ocrfold .ocrbox .eng-mini b{color:var(--text-2)}
         <input type="file" id="folder" webkitdirectory directory multiple hidden>
       </div>
       <div class="sec-h"><span>문서 <span id="docCount"></span></span><span class="acts"><span class="dvseg" id="dvSeg"><button data-dv="list" title="목록" data-ic="list"></button><button data-dv="icon" title="아이콘 (첫 쪽 미리보기)" data-ic="grid"></button><button data-dv="tree" title="폴더 (탐색기처럼)" data-ic="folder"></button></span><button class="btn ghost" id="delAllDocs" title="작업 목록 비우기">비우기</button></span></div>
+      <div class="dsearch" id="dSearch"><i class="si" data-ic="search"></i><input type="search" id="docQ" placeholder="문서 이름·인식한 글자 검색" autocomplete="off" spellcheck="false" title="띄어쓰기는 무시하고 찾습니다 (Esc: 지우기)"><button id="docQx" title="지우기" hidden>×</button></div>
+      <div class="dhits" id="docHits" hidden></div>
       <div class="docs" id="docs"></div>
       <div class="pgsec" id="pgSec"><div class="sec-h" style="border-top:1px solid var(--line);padding-top:10px"><span>페이지</span><span id="pageCount"></span></div>
       <div class="thumbs" id="thumbs"></div></div>
@@ -984,6 +1009,7 @@ body.ocrfold .ocrbox .eng-mini b{color:var(--text-2)}
 "use strict";
 /* ---------- 아이콘 (Lucide, 오프라인 인라인) ---------- */
 const IC={
+ search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
  files:'<path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/>',
  moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
@@ -1118,13 +1144,48 @@ function openHelp(){
 
 /* ---------- 문서 ---------- */
 async function loadDocs(selectId){
-  S.docs=await api('/api/docs');
+  S.docs=await api('/api/docs');DCACHE.clear();
   $('#docCount').textContent=S.docs.length||'';
+  if($('#docQ')?.value.trim())docSearch();
   if(window.WEB)api('/api/storage').then(r=>{const mb=x=>x>1e9?(x/1e9).toFixed(1)+'GB':Math.round(x/1e6)+'MB';const el=$('#docCount');if(el)el.title=`이 브라우저에 저장된 용량 ${mb(r.usage)} / 쓸 수 있는 최대 약 ${mb(r.quota)}`}).catch(()=>{});
   renderDocList();
   const mb=$('#mnDocs');if(mb){mb.hidden=!S.docs.length;mb.textContent=S.docs.length}
   if(selectId)openDoc(selectId);
 }
+/* ---------- 문서 검색: 이름 + 인식한 글자 (띄어쓰기 무시) ---------- */
+const DCACHE=new Map(); // 문서 id → 전체 문서 (loadDocs 때 비움)
+const nsp=t=>String(t||'').replace(/\s+/g,'').toLowerCase();
+function hitSnip(text,q){ // 띄어쓰기를 무시하고 찾은 자리를 원문에서 표시
+  const idx=[];let flat='';for(let k=0;k<text.length;k++)if(!/\s/.test(text[k])){idx.push(k);flat+=text[k].toLowerCase()}
+  const at=flat.indexOf(q);if(at<0)return null;const a=idx[at],b=idx[at+q.length-1]+1,from=Math.max(0,a-18),to=Math.min(text.length,b+30);
+  return (from?'…':'')+esc(text.slice(from,a))+'<mark>'+esc(text.slice(a,b))+'</mark>'+esc(text.slice(b,to))+(to<text.length?'…':'')}
+let dqSeq=0;
+async function runDocSearch(){
+  const raw=$('#docQ').value,q=nsp(raw),box=$('#docHits');$('#docQx').hidden=!raw;
+  $('#docs').hidden=!!q;box.hidden=!q;if(!q){renderDocList();return}
+  const seq=++dqSeq;box.innerHTML=`<div class="dh-st">${ic('loader','spin')} 찾는 중…</div>`;
+  const out=[];let total=0;const MAX=300;
+  for(const d of S.docs){
+    let full=S.doc?.id===d.id?S.doc:DCACHE.get(d.id);
+    if(!full&&d.done){try{full=await api('/api/docs/'+d.id);DCACHE.set(d.id,full)}catch(e){full=null}if(seq!==dqSeq)return}
+    const nameHit=nsp(d.name+' '+(d.folder||'')).includes(q),hits=[];
+    if(full)full.pages.forEach((pg,pi)=>(pg.result?.lines||[]).forEach((l,li)=>{if(total+hits.length>=MAX)return;const sn=nsp(l.text).includes(q)&&hitSnip(l.text,q);if(sn)hits.push({pi,li,sn})}));
+    if(nameHit||hits.length){out.push({d,nameHit,hits});total+=hits.length}
+  }
+  if(seq!==dqSeq)return;
+  const nh=out.reduce((a,o)=>a+o.hits.length,0);
+  box.innerHTML=out.length?`<div class="dh-st">문서 ${out.length}개 · 글자 ${nh}곳${total>=MAX?` (앞의 ${MAX}곳만)`:''}</div>`+out.map(o=>`<div class="dh-doc">
+      <div class="dh-h ${S.doc?.id===o.d.id?'on':''}" data-id="${o.d.id}" data-p="0">${ic(/\.pdf$/i.test(o.d.name)?'file':'image')}<span class="nm">${o.nameHit?hitSnip(o.d.name,q)||esc(o.d.name):esc(o.d.name)}</span><span class="c">${o.hits.length?o.hits.length+'곳':'이름'}</span></div>
+      ${o.hits.slice(0,30).map(h=>`<div class="dh-l" data-id="${o.d.id}" data-p="${h.pi}" data-l="${h.li}"><span class="pg">${h.pi+1}쪽</span><span class="tx">${h.sn}</span></div>`).join('')}
+      ${o.hits.length>30?`<div class="dh-more">+ ${o.hits.length-30}곳 더 (문서를 열어 확인)</div>`:''}</div>`).join('')
+    :`<div class="empty-side">'${esc(raw)}'에 맞는 문서가 없습니다.<br><small>아직 인식하지 않은 쪽은 이름으로만 찾습니다.</small></div>`;
+  $$('#docHits [data-id]').forEach(el=>el.onclick=async()=>{
+    const id=el.dataset.id,pi=+el.dataset.p,li=el.dataset.l;
+    if(S.doc?.id!==id)await openDoc(id,pi);else if(S.page!==pi){S.page=pi;S.sel=-1;renderAll()}
+    $$('#docHits .on').forEach(x=>x.classList.remove('on'));el.classList.add('on');
+    afterPick();if(li!=null)setTimeout(()=>selectLine(+li,true),60)});
+}
+const docSearch=debounce(runDocSearch,220);
 /* 문서 목록: 목록 · 아이콘 · 폴더(탐색기) */
 const OBJ=new Map();
 function objUrl(f){if(!OBJ.has(f))OBJ.set(f,URL.createObjectURL(f));return OBJ.get(f)}
@@ -2472,6 +2533,9 @@ function bind(){
       rz.onpointerup=()=>{rz.onpointermove=rz.onpointerup=null;rz.classList.remove('on');document.body.classList.remove('rszing');store.set('rw',parseInt(app.style.getPropertyValue('--rwu'))||0);syncTools()}};
     rz.ondblclick=()=>{setW(0);store.set('rw',0)};
   }addEventListener('resize',syncTools);
+  $('#docQ').oninput=docSearch;
+  $('#docQ').onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();$('#docQ').value='';runDocSearch()}if(e.key==='Enter'){e.preventDefault();$('#docHits .dh-l, #docHits .dh-h')?.click()}};
+  $('#docQx').onclick=()=>{$('#docQ').value='';runDocSearch();$('#docQ').focus()};
   $('#ocrFold').onclick=()=>setOcrFold(!S.ocrFold);setOcrFold(!!store.get('ocrFold',false));
   $('#tglL').onclick=()=>{S.hl=!S.hl;setPanels()};$('#tglR').onclick=()=>{S.hr=!S.hr;setPanels()};setPanels();
   $$('#cvSeg button').forEach(b=>b.onclick=()=>setCv(b.dataset.cv));
