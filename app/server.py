@@ -1031,6 +1031,34 @@ def api_templates_save(items: list[dict]):
     return {"templates": TEMPLATES.save_all(items)}
 
 
+LEARN_FILE = WS / "learn.json"
+LEARN_BAK = WS / "learn_backup"
+
+
+@app.get("/api/learn")
+def api_learn_get():
+    """고친 내용 학습 데이터 (화면의 localStorage 백업) — 브라우저 데이터를 지워도 PC에 남게."""
+    try:
+        return {"data": json.loads(LEARN_FILE.read_text("utf-8")) if LEARN_FILE.exists() else None, "path": str(LEARN_FILE)}
+    except Exception:  # noqa: BLE001
+        return {"data": None, "path": str(LEARN_FILE)}
+
+
+@app.put("/api/learn")
+def api_learn_put(data: dict):
+    WS.mkdir(parents=True, exist_ok=True)
+    tmp = LEARN_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), "utf-8")
+    tmp.replace(LEARN_FILE)
+    # 하루 한 벌씩 따로 보관 (최근 14일)
+    LEARN_BAK.mkdir(exist_ok=True)
+    day = LEARN_BAK / f"learn_{time.strftime('%Y%m%d')}.json"
+    shutil.copyfile(LEARN_FILE, day)
+    for old in sorted(LEARN_BAK.glob("learn_*.json"))[:-14]:
+        old.unlink(missing_ok=True)
+    return {"ok": True, "path": str(LEARN_FILE), "saved_at": int(time.time() * 1000)}
+
+
 @app.post("/api/extract")
 def api_extract(req: ExtractReq):
     fields = req.fields

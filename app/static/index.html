@@ -82,6 +82,13 @@ aside.left{background:var(--panel);border-right:1px solid var(--line);display:fl
 /* 고친 내용 학습 */
 .lbadge{position:relative}
 .lbadge[data-n]:not([data-n=""])::after{content:attr(data-n);position:absolute;top:1px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--warn);color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center}
+.learn .lauto{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.learn .lauto>span{color:var(--text-2)}.learn .lauto select{height:26px!important}
+.learn .lsave{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.5;padding:8px 10px;border-radius:10px;background:var(--panel-2)}
+.learn .lsave svg{width:16px;height:16px;flex:0 0 auto;margin-top:1px;color:var(--accent)}.learn .lsave small{color:var(--text-3)}.learn .lsave .path{word-break:break-all}
+.learn .lsave.warn{background:color-mix(in srgb,var(--warn) 14%,var(--panel))}.learn .lsave.warn svg{color:var(--warn)}
+.learn .held{font-style:normal;font-size:10.5px;font-weight:800;color:var(--warn);border:1px solid var(--warn);border-radius:99px;padding:0 6px;margin-left:4px}
+.lbadge.due::before{content:'';position:absolute;bottom:3px;right:3px;width:7px;height:7px;border-radius:50%;background:var(--warn)}
 .learn h5{font-size:13px;font-weight:800;margin-top:6px;display:flex;align-items:center;gap:8px}.learn h5 small{font-weight:600;color:var(--text-3);font-size:11.5px}
 .learn .lsum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .learn .lsum>div{background:var(--panel-2);border-radius:10px;padding:10px 12px}
@@ -1053,6 +1060,7 @@ body.ocrfold .ocrbox .eng-mini b{color:var(--text-2)}
 "use strict";
 /* ---------- 아이콘 (Lucide, 오프라인 인라인) ---------- */
 const IC={
+ alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
  edit:'<path d="M12 20h9"/><path d="M16.38 3.62a1 1 0 0 1 3 3L7.37 18.64a2 2 0 0 1-.86.5l-2.87.84a.5.5 0 0 1-.62-.62l.84-2.87a2 2 0 0 1 .5-.86z"/>',
  upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
  grad:'<path d="M21.42 10.92a1 1 0 0 0-.02-1.84L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.83l8.57 3.91a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>',
@@ -1205,7 +1213,20 @@ async function loadDocs(selectId){
    나빠지면 바로 이전 버전으로 돌릴 수 있다. 저장: 이 브라우저(PC) 안 (localStorage). */
 const LEARN_FMT='iux-ocr-learn';
 const L=Object.assign({samples:{},versions:[],active:null,hist:[],seq:0},store.get('learn',{}));
-const saveLearn=debounce(()=>{store.set('learn',L);updLearnBadge()},300);
+L.auto=Object.assign({on:true,every:10},L.auto||{});
+const IS_WEB=()=>!!window.WEB_API;
+const putLearnFile=debounce(async()=>{if(IS_WEB())return;try{const r=await api('/api/learn',{method:'PUT',json:L});L.fileAt=r.saved_at;L.filePath=r.path;store.set('learn',L);if($('#mLearn')?.classList.contains('on'))renderLearnSave()}catch(e){L.fileErr=e.message}},1500);
+const saveLearn=debounce(()=>{L.savedAt=Date.now();store.set('learn',L);updLearnBadge();putLearnFile()},300);
+async function loadLearnFile(){ // 설치형: PC 파일이 더 새것이면 가져옴 (브라우저 데이터를 지웠을 때 복구)
+  if(IS_WEB())return;try{const r=await api('/api/learn');L.filePath=r.path;const d=r.data;
+    if(d&&(d.savedAt||0)>(L.savedAt||0)){Object.assign(L,d);store.set('learn',L);updLearnBadge();lHist('PC에 저장된 학습 데이터를 불러옴');toast('PC에 저장된 학습 데이터를 불러왔습니다')}
+    else if(!d&&(L.versions.length||Object.keys(L.samples).length))putLearnFile();
+  }catch(e){}
+}
+function learnBackupDue(){ // 웹: 바뀐 뒤 7일 넘게 내보내지 않았으면
+  if(!IS_WEB())return false;const changed=L.savedAt||0,exp=L.exportedAt||0;
+  return (L.versions.length||Object.keys(L.samples).length>=10)&&changed>exp&&Date.now()-Math.max(exp,L.firstAt||(L.firstAt=Date.now()))>7*864e5;
+}
 function lHist(msg){L.hist.unshift({at:Date.now(),msg});L.hist=L.hist.slice(0,300)}
 function lActive(){return L.versions.find(v=>v.id===L.active)||null}
 const lNum=s=>/^[\d\s.,:\-~/()%]*$/.test(s);
@@ -1275,19 +1296,32 @@ function lRecord(key,src,dst,where){
   src=String(src??'').trim();dst=String(dst??'').trim();if(!src&&!dst)return;
   if(src===dst){if(L.samples[key]){delete L.samples[key];saveLearn()}return}
   if(src.length>400||dst.length>400)return;
-  L.samples[key]={src,dst,at:Date.now(),where:where||''};
+  L.samples[key]={src,dst,at:Date.now(),where:where||''};lAutoCheck();
   const ks=Object.keys(L.samples);if(ks.length>2000){ks.sort((a,b)=>L.samples[a].at-L.samples[b].at).slice(0,ks.length-2000).forEach(k=>delete L.samples[k])}
   saveLearn();
 }
+const lAutoCheck=debounce(()=>{if(L.auto.on&&lNewCount()>=L.auto.every)lAutoLearn()},4000); // 고치는 중엔 기다렸다가
+function lAutoLearn(){
+  const fresh=rulesFromSamples();if(!fresh.length)return;
+  const cur=lActive(),keep=cur?cur.rules.filter(r=>r.src==='불러옴'):[];
+  const rules=mergeRules(keep,fresh).map(r=>{const old=cur?.rules.find(x=>x.from===r.from&&x.to===r.to);return old&&!old.on?{...r,on:false}:r});
+  const curNow=cur?scoreRules(cur.rules):null;if(cur)cur.score=curNow; // 같은 예시로 공정하게 비교
+  const v=lNewVersion(rules,'자동 학습',`새 예시 ${lNewCount()}개`);
+  if(cur&&curNow&&v.score&&v.score.gain<curNow.gain){ // 나빠지면 쓰지 않고 이전 버전 유지
+    L.active=cur.id;v.held=true;lHist(`자동 학습 v${v.n}: 고침률 ${curNow.gain}% → ${v.score.gain}%로 떨어져 v${cur.n} 계속 사용`);saveLearn();
+    toast(`자동 학습 v${v.n}은 고침률이 떨어져(${curNow.gain}%→${v.score.gain}%) v${cur.n}을 계속 씁니다`);
+  }else toast(`자동 학습: v${v.n} 사용 (규칙 ${v.rules.length}개${v.score?` · 고침률 ${v.score.gain}%`:''})`);
+  if($('#mLearn')?.classList.contains('on'))renderLearn();
+}
 function lNewCount(){return Object.values(L.samples).filter(s=>s.at>(L.learnedAt||0)).length}
-function updLearnBadge(){const b=$('#btnLearn');if(!b)return;const n=lNewCount();b.dataset.n=n>99?'99+':n||'';b.title=`고친 내용 학습${n?` — 새로 고친 예시 ${n}개 (학습 전)`:''}`}
+function updLearnBadge(){const b=$('#btnLearn');if(!b)return;const n=lNewCount();b.classList.toggle('due',learnBackupDue());b.dataset.n=n>99?'99+':n||'';b.title=`고친 내용 학습${n?` — 새로 고친 예시 ${n}개 (학습 전)`:''}`}
 function lDownload(obj,name){const u=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:'application/json'}));const a=Object.assign(document.createElement('a'),{href:u,download:name});document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}
 function lExport(v){
   v=v||lActive();if(!v){toast('내보낼 버전이 없습니다. 먼저 학습하세요.');return}
   const withS=$('#lExpS')?.checked,d=new Date();
   lDownload({format:LEARN_FMT,ver:1,exported_at:d.toISOString(),from:'IUX OCR',version:{n:v.n,at:v.at,source:v.source,note:v.note,score:v.score,rules:v.rules},samples:withS?Object.values(L.samples).map(({src,dst,at})=>({src,dst,at})):undefined},
     `IUX-OCR-학습-v${v.n}-${d.toISOString().slice(0,10)}.json`);
-  lHist(`v${v.n} 내보냄${withS?' (고친 예시 포함)':''}`);saveLearn();
+  L.exportedAt=Date.now();lHist(`v${v.n} 내보냄${withS?' (고친 예시 포함)':''}`);saveLearn();
 }
 async function lImport(file){
   let o;try{o=JSON.parse(await file.text())}catch(e){toast('학습 파일을 읽지 못했습니다 (JSON 아님)');return}
@@ -1312,8 +1346,14 @@ function lUse(id){const v=L.versions.find(x=>x.id===id);L.active=v?v.id:null;lHi
 function lDel(id){const v=L.versions.find(x=>x.id===id);if(!v||!confirm(`v${v.n}을 지울까요? 되돌릴 수 없습니다.`))return;L.versions=L.versions.filter(x=>x!==v);if(L.active===id){L.active=L.versions[0]?.id||null}lHist(`v${v.n} 지움`);saveLearn();renderLearn()}
 function lPrev(){const i=L.versions.findIndex(v=>v.id===L.active);const p=L.versions[i+1];if(p)lUse(p.id)}
 const lDate=t=>{const d=new Date(t);return `${d.getMonth()+1}.${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
+function lRescore(){const sig=Object.keys(L.samples).length+':'+Object.values(L.samples).reduce((a,s)=>Math.max(a,s.at),0);
+  L.versions.slice(0,12).forEach(v=>{if(v.score?.sig!==sig){v.score=scoreRules(v.rules);if(v.score)v.score.sig=sig}})}
+function renderLearnSave(){const el=$('#lSave');if(!el)return;
+  el.innerHTML=IS_WEB()?`${ic('alert')}<span>이 브라우저 안에만 저장됩니다. 브라우저 데이터를 지우면 사라지니 가끔 <b>내보내기</b>로 백업하세요.${L.exportedAt?` <small>마지막 내보내기 ${lDate(L.exportedAt)}</small>`:' <small>아직 내보낸 적 없음</small>'}</span>`
+    :`${ic('check')}<span>PC에 자동 저장됩니다${L.fileAt?` <small>${lDate(L.fileAt)}</small>`:''}<br><small class="path">${esc(L.filePath||'작업 폴더/learn.json')} · 하루 한 벌씩 14일치 따로 보관</small></span>`;
+  el.classList.toggle('warn',IS_WEB()&&learnBackupDue());paintIcons(el)}
 function renderLearn(){
-  const box=$('#learnBody');if(!box)return;const act=lActive(),nS=Object.keys(L.samples).length,nNew=lNewCount(),q=($('#lRuleQ')?.value||'').trim();
+  const box=$('#learnBody');if(!box)return;lRescore();const act=lActive(),nS=Object.keys(L.samples).length,nNew=lNewCount(),q=($('#lRuleQ')?.value||'').trim();
   const sc=s=>s?`<b class="${s.gain<0?'bad':''}">${s.gain>0?'+':''}${s.gain}%</b><small>정확 ${s.exact}%</small>`:'<small>—</small>';
   box.innerHTML=`
   <div class="lsum"><div><div class="k">모은 고친 예시</div><div class="v">${nS}<small>${nNew?` (새로 ${nNew})`:''}</small></div></div>
@@ -1322,11 +1362,13 @@ function renderLearn(){
   <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" id="lLearn">${ic('sparkles')}지금 학습 → 새 버전</button>
     ${act&&L.versions.findIndex(v=>v.id===L.active)<L.versions.length-1?`<button class="btn" id="lPrevB">${ic('undo')}이전 버전으로</button>`:''}
     ${act?`<button class="btn" id="lOff">학습 끄기</button>`:''}</div>
+  <div class="lauto"><label class="ck"><input type="checkbox" id="lAutoOn" ${L.auto.on?'checked':''}><b>자동 학습</b></label><span>새로 고친 예시가</span><select id="lAutoN" style="width:auto">${[5,10,20,50].map(n=>`<option ${n===L.auto.every?'selected':''}>${n}</option>`).join('')}</select><span>개 모이면 새 버전 · 고침률이 떨어지면 쓰지 않고 이전 버전 유지</span></div>
+  <div class="lsave" id="lSave"></div>
   <p class="muted lnote">인식 글을 고치면(오른쪽 텍스트 줄·선택 팝업·복사될 글) '원래 글 → 고친 글'이 자동으로 모입니다. <b>지금 학습</b>을 누르면 낱말 단위 고침 규칙을 새 버전으로 만들고, 복사할 때 자동으로 적용합니다(팝업의 <b>학습한 고침</b>). 고침률은 모은 예시에 규칙을 적용했을 때 고쳐야 할 글자가 얼마나 줄었는지입니다. 떨어지면 이전 버전으로 바로 돌리세요.</p>
 
   <h5>버전</h5>
   <div class="lver">${L.versions.length?L.versions.map((v,k)=>{const pv=L.versions[k+1],down=pv?.score&&v.score&&v.score.gain<pv.score.gain;return `<div class="vr ${v.id===L.active?'on':''}">
-      <span class="vn">v${v.n}</span><span class="vm"><b>${esc(v.source)}</b><small>${lDate(v.at)} · 규칙 ${v.rules.length}개${v.note?' · '+esc(v.note):''}</small></span>
+      <span class="vn">v${v.n}</span><span class="vm"><b>${esc(v.source)}${v.held?' <em class="held">보류</em>':''}</b><small>${lDate(v.at)} · 규칙 ${v.rules.length}개${v.note?' · '+esc(v.note):''}</small></span>
       <span class="vs">${sc(v.score)}${down?'<em class="dn" title="바로 전 버전보다 떨어짐">↓</em>':''}</span>
       <span class="va">${v.id===L.active?'<span class="pill">사용 중</span>':`<button class="btn sm" data-luse="${v.id}">사용</button>`}<button class="btn sm ghost icon" data-lexp="${v.id}" title="이 버전 내보내기">${ic('download')}</button><button class="btn sm ghost icon" data-ldel="${v.id}" title="지우기">${ic('trash')}</button></span></div>`}).join(''):'<div class="empty-side">아직 버전이 없습니다. 고친 뒤 <b>지금 학습</b>을 누르세요.</div>'}</div>
 
@@ -1346,7 +1388,9 @@ function renderLearn(){
 
   <h5>기록</h5>
   <div class="lhist">${L.hist.slice(0,60).map(h=>`<div><span>${lDate(h.at)}</span>${esc(h.msg)}</div>`).join('')||'<div class="empty-side">기록이 없습니다.</div>'}</div>`;
-  paintIcons(box);
+  paintIcons(box);renderLearnSave();
+  $('#lAutoOn').onchange=e=>{L.auto.on=e.target.checked;lHist(`자동 학습 ${L.auto.on?'켬':'끔'}`);saveLearn();if(L.auto.on)lAutoCheck()};
+  $('#lAutoN').onchange=e=>{L.auto.every=+e.target.value;lHist(`자동 학습: 예시 ${L.auto.every}개마다`);saveLearn();lAutoCheck()};
   $('#lLearn').onclick=lLearnNow;$('#lPrevB')&&($('#lPrevB').onclick=lPrev);$('#lOff')&&($('#lOff').onclick=()=>lUse(null));
   $('#lExpB').onclick=()=>lExport();$('#lImpB').onclick=()=>$('#lImpF').click();$('#lImpF').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)lImport(f)};
   $$('#learnBody [data-luse]').forEach(b=>b.onclick=()=>lUse(b.dataset.luse));
@@ -2769,7 +2813,8 @@ function bind(){
       rz.onpointerup=()=>{rz.onpointermove=rz.onpointerup=null;rz.classList.remove('on');document.body.classList.remove('rszing');store.set('rw',parseInt(app.style.getPropertyValue('--rwu'))||0);syncTools()}};
     rz.ondblclick=()=>{setW(0);store.set('rw',0)};
   }addEventListener('resize',syncTools);
-  $('#btnLearn').onclick=openLearn;updLearnBadge();
+  $('#btnLearn').onclick=openLearn;updLearnBadge();loadLearnFile();
+  if(learnBackupDue()&&store.get('learnRemind','')!==new Date().toDateString()){store.set('learnRemind',new Date().toDateString());setTimeout(()=>toast('학습 데이터를 7일 넘게 백업하지 않았습니다 — 학습(학사모) → 내보내기'),2500)}
   $('#docQ').oninput=docSearch;
   $('#docQ').onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();$('#docQ').value='';runDocSearch()}if(e.key==='Enter'){e.preventDefault();$('#docHits .dh-l, #docHits .dh-h')?.click()}};
   $('#docQx').onclick=()=>{$('#docQ').value='';runDocSearch();$('#docQ').focus()};
